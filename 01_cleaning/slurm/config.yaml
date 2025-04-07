@@ -1,0 +1,26 @@
+cluster:
+  "sbatch
+    --account=p0020567
+    --cpus-per-task={threads}
+    --mem={resources.mem_mb}
+    --job-name=scqc-{rule}
+    --time={resources.time}
+    --output=logs/%j
+    --partition={resources.partition}
+    --gpus-per-node={resources.gpu}"
+default-resources:
+  - partition=c23ms
+  - mem_mb=50000
+  - time="24:00:00"
+  - gpu=0
+restart-times: 0
+max-jobs-per-second: 100
+max-status-checks-per-second: 1
+local-cores: 1
+latency-wait: 300
+jobs: 100
+keep-going: True
+rerun-incomplete: True
+printshellcmds: True
+scheduler: greedy
+use-conda: True

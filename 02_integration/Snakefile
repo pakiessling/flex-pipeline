@@ -1,0 +1,62 @@
+import glob
+import os
+
+INPUT_FILES = glob.glob(os.path.join(config["input"], '*.h5ad'))
+SAMPLE_IDS = [os.path.basename(f).split('_')[0] for f in INPUT_FILES]
+
+rule all:
+    input:
+        "04_output/marker_genes_ranked_leiden_3.csv"
+
+rule run_integration:
+    input:
+        expand("{input_path}/{sample}_clean.h5ad", input_path=config["input"], sample=SAMPLE_IDS)
+    output:
+        integrated="03_output/integrated.h5ad"
+    params:
+        input_dir=config["input"],
+        output_file="03_output/integrated.h5ad"
+    conda:
+        "../00_Snakemake_cleaning_snRNA/enviroments/sc.yml"
+    shell:
+        """
+        python scripts/03_integration.py \
+        --input_dir {params.input_dir} \
+        --output_file {params.output_file}
+        sleep 5 # Delay added to allow the filesystem to update
+        """
+
+rule run_celltypist:
+    input:
+        "03_output/integrated.h5ad"
+    output:
+        annotated="04_output/01_integrated_annotated_celltypist.h5ad"
+    params:
+        input_file="03_output/integrated.h5ad",
+        output_file="04_output/01_integrated_annotated_celltypist.h5ad"
+    conda:
+        "../00_Snakemake_cleaning_snRNA/enviroments/sc.yml"
+    shell:
+        """
+        python scripts/04_celltyping.py \
+        --input_file {params.input_file} \
+        --output_file {params.output_file}
+        """
+
+rule run_marker:
+    input:
+        "04_output/01_integrated_annotated_celltypist.h5ad"
+    output:
+        markers="04_output/marker_genes_ranked_leiden_3.csv"
+    params:
+        input="04_output/01_integrated_annotated_celltypist.h5ad",
+        output="04_output"
+    conda:
+        "enviroment.yml"
+       # "../00_Snakemake_cleaning_snRNA/enviroments/py_r.yml"
+    shell:
+        """
+        Rscript scripts/05_markers.R \
+        --input {params.input} \
+        --output {params.output}
+        """

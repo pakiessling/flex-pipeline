@@ -1,0 +1,56 @@
+import pandas as pd
+import os
+
+# Load samples from CSV
+samples = pd.read_csv(config['samples'])
+sample_list = samples['sample_id'].tolist()
+
+os.makedirs("logs", exist_ok=True)
+
+
+rule all:
+    input:
+        # Define final output files for all samples
+        expand("output/{sample}_clean.h5ad", sample=sample_list),
+        expand("qc/{sample}/{sample}_umap.png", sample=sample_list),
+        expand("qc/{sample}/{sample}_marker_1_5.csv", sample=sample_list),
+        expand("qc/{sample}/{sample}_marker_3.csv", sample=sample_list),
+
+
+# Run SoupX
+rule run_soupx:
+    input:
+        raw_matrix=lambda wildcards: samples.loc[samples['sample_id'] == wildcards.sample, 'raw_matrix_path'].values[0],
+        filtered_matrix=lambda wildcards: samples.loc[samples['sample_id'] == wildcards.sample, 'filtered_matrix_path'].values[0]
+    output:
+        cleaned_data="intermediate/{sample}_cleaned.h5ad"
+    params:
+        script="scripts/01_SoupX.py"
+    conda:
+       "enviroments/py_r.yml"
+
+    shell:
+        """
+        python {params.script} --sample {wildcards.sample} --output {output.cleaned_data} \
+               --raw_matrix {input.raw_matrix} --filtered_matrix {input.filtered_matrix}
+        """
+
+# Run quality control
+rule run_qc:
+    input:
+        cleaned_data="intermediate/{sample}_cleaned.h5ad"
+    output:
+        qc_data="output/{sample}_clean.h5ad",
+        umap="qc/{sample}/{sample}_umap.png",
+        markers="qc/{sample}/{sample}_marker_1_5.csv",
+        markers2="qc/{sample}/{sample}_marker_3.csv"
+    params:
+        script="scripts/02_qc.py",
+        qc_folder="qc"
+    conda:
+        "enviroments/sc.yml"
+    shell:
+        """
+        python {params.script} --input {input.cleaned_data} --sample {wildcards.sample} \
+               --output {output.qc_data} --qc_folder {params.qc_folder}
+        """
