@@ -12,4 +12,5 @@ dependencies:
   - bioconductor-biocparallel>=1.36
   - r-argparser>=0.7
   - r-pak
+  - r-hdf5r
   # anndataR is not in conda; r-pak installs it from CRAN at runtime (see 04_singleR.R)

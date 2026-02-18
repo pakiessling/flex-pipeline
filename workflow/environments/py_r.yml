@@ -11,5 +11,6 @@ dependencies:
   - r-matrix
   - r-argparser>=0.7
   - r-pak
+  - r-hdf5r
   # anndataR is not in conda; r-pak installs it from CRAN at runtime (see 01_soupx.R)
   # Seurat (required for Read10X_h5) is pulled in as a transitive dependency of r-soupx
