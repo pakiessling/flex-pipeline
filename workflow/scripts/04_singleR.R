@@ -4,6 +4,17 @@
 # Reads both query and reference as h5ad files via anndataR, runs SingleR,
 # and writes the query h5ad back with SingleR labels added to .obs.
 
+required_packages <- c("anndataR")
+for (pkg in required_packages) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    if (pkg == "anndataR") {
+      pak::pak("scverse/anndataR@v0.1.0")
+    } else {
+      install.packages(pkg)
+    }
+  }
+}
+
 suppressPackageStartupMessages({
   library(anndataR)
   library(SingleR)

@@ -11,7 +11,5 @@ dependencies:
   - bioconductor-singlecellexperiment>=1.24
   - bioconductor-biocparallel>=1.36
   - r-argparser>=0.7
-  # anndataR for loading .h5ad files in R
-  - pip
-  - pip:
-    - anndataR
+  - r-pak
+  # anndataR is not in conda; r-pak installs it from CRAN at runtime (see 04_singleR.R)

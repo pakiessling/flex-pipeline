@@ -17,3 +17,5 @@ dependencies:
   - numpy
   - r-soupx>=1.6
   - r-matrix
+  - r-pak
+  # anndataR is not in conda; r-pak installs it from CRAN at runtime (see 01_soupx.py)
