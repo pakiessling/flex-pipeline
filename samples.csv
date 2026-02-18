@@ -1,0 +1,4 @@
+sample_id,raw_matrix_path,filtered_matrix_path
+L60A,/hpcwork/p0020567/data/scRNA/raw/project06-virus-heart/aligned/L60/L60/outs/per_sample_outs/L60A/count/sample_raw_feature_bc_matrix.h5,/hpcwork/p0020567/data/scRNA/raw/project06-virus-heart/aligned/L60/L60/outs/per_sample_outs/L60A/count/sample_filtered_feature_bc_matrix.h5
+L60B,/hpcwork/p0020567/data/scRNA/raw/project06-virus-heart/aligned/L60/L60/outs/per_sample_outs/L60B/count/sample_raw_feature_bc_matrix.h5,/hpcwork/p0020567/data/scRNA/raw/project06-virus-heart/aligned/L60/L60/outs/per_sample_outs/L60B/count/sample_filtered_feature_bc_matrix.h5
+L60C,/hpcwork/p0020567/data/scRNA/raw/project06-virus-heart/aligned/L60/L60/outs/per_sample_outs/L60C/count/sample_raw_feature_bc_matrix.h5,/hpcwork/p0020567/data/scRNA/raw/project06-virus-heart/aligned/L60/L60/outs/per_sample_outs/L60C/count/sample_filtered_feature_bc_matrix.h5

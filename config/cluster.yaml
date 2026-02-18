@@ -5,14 +5,14 @@
 # These settings are read by launch.sh and used to configure SLURM submission.
 
 # SLURM account to charge compute time to
-slurm_account: "YOUR_ACCOUNT"
+slurm_account: "p0020567"
 
 # SLURM partition (queue) to submit jobs to
-slurm_partition: "YOUR_PARTITION"
+#slurm_partition: "YOUR_PARTITION"
 
 # Path to your Conda/Miniconda installation root.
 # Leave empty ("") to auto-detect: tries $HOME/miniconda3, then $HOME/anaconda3.
-conda_root: ""
+conda_root: "/work/mz637064/miniconda3/bin/conda"
 
 # Name or path of the Conda environment that has Snakemake installed.
 # Leave empty ("") if snakemake is already in your PATH.

@@ -13,9 +13,9 @@ steps:
   soupx: true           # Ambient RNA removal via SoupX (requires raw + filtered matrices)
   qc: true              # Per-sample QC metrics, doublet detection, clustering
   integration: true     # Multi-sample merge, Harmony batch correction, UMAP/PaCMAP
-  label_transfer: false # SingleR label transfer from a reference dataset (set reference_h5ad below)
+  label_transfer: true # SingleR label transfer from a reference dataset (set reference_h5ad below)
   markers: true         # Differential expression / marker genes via illico
-  cytetype: false       # CyteType LLM cluster annotation (requires markers step)
+  cytetype: true       # CyteType LLM cluster annotation (requires markers step)
   report: true          # Generate summary HTML report
 
 # =============================================================================
@@ -35,8 +35,8 @@ params:
   # --- Label transfer / SingleR (04_singleR.R) ---
   # Path to a reference h5ad file containing labelled cells.
   # Required when steps.label_transfer is true.
-  reference_h5ad: ""
-  reference_label_column: "cell_type"  # Column in reference .obs to use as labels
+  reference_h5ad: "/hpcwork/p0020567/data/scRNA/processed/heart_project_2024/2025-08-06-final_data/hs_snrna.h5ad"
+  reference_label_column: "cell_subtype"  # Column in reference .obs to use as labels
 
   # --- Marker genes / illico (06_markers.py) ---
   markers_group_key: "leiden_3"  # Obs column to group cells by
