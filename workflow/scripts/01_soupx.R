@@ -60,9 +60,23 @@ if (args$skip) {
   filt_mat <- filt_mat[common_genes, ]
   raw_mat  <- raw_mat[common_genes, ]
 
+  # autoEstCont requires cluster labels. Since we load H5 files directly
+  # (bypassing load10X), we must supply them ourselves via Seurat.
+  cat(sprintf("[%s] Clustering filtered matrix for SoupX …\n", args$sample))
+  seu <- Seurat::CreateSeuratObject(counts = filt_mat)
+  seu <- Seurat::NormalizeData(seu, verbose = FALSE)
+  seu <- Seurat::FindVariableFeatures(seu, nfeatures = 2000, verbose = FALSE)
+  seu <- Seurat::ScaleData(seu, features = Seurat::VariableFeatures(seu), verbose = FALSE)
+  seu <- Seurat::RunPCA(seu, npcs = 15, verbose = FALSE)
+  seu <- Seurat::FindNeighbors(seu, dims = 1:15, verbose = FALSE)
+  seu <- Seurat::FindClusters(seu, verbose = FALSE)
+  soupx_clusters <- setNames(as.character(Seurat::Idents(seu)), colnames(filt_mat))
+  rm(seu)
+
   result <- tryCatch({
     cat(sprintf("[%s] Building SoupChannel and running autoEstCont …\n", args$sample))
     sc <- SoupChannel(raw_mat, filt_mat)
+    sc <- setClusters(sc, soupx_clusters)
     sc <- autoEstCont(sc, doPlot = FALSE)
     out <- adjustCounts(sc, roundToInt = TRUE)
     list(corrected = out, success = TRUE)
@@ -91,8 +105,8 @@ n_cells <- ncol(filt_mat)
 n_genes <- nrow(filt_mat)
 cat(sprintf("[%s] Cells: %d, Genes: %d\n", args$sample, n_cells, n_genes))
 
-obs_df <- data.frame(row.names = colnames(filt_mat),
-                     Sample    = args$sample,
+obs_df <- data.frame(Sample    = rep(args$sample, n_cells),
+                     row.names = colnames(filt_mat),
                      stringsAsFactors = FALSE)
 var_df <- data.frame(row.names = rownames(filt_mat),
                      stringsAsFactors = FALSE)
