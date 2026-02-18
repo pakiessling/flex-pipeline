@@ -198,6 +198,9 @@ rule run_qc:
         min_genes=PARAMS.get("min_genes", 2),
         mad_threshold=PARAMS.get("mad_threshold", 5),
         expected_doublet_rate=PARAMS.get("expected_doublet_rate", 0.2),
+        leiden_resolutions=" ".join(
+            str(r) for r in PARAMS.get("leiden_resolutions", [1.5, 3.0])
+        ),
     resources:
         mem_mb=DEF_MEM,
         runtime=DEF_RT,
@@ -216,6 +219,7 @@ rule run_qc:
             --min_genes {params.min_genes} \
             --mad_threshold {params.mad_threshold} \
             --expected_doublet_rate {params.expected_doublet_rate} \
+            --leiden_resolutions {params.leiden_resolutions} \
             > {log} 2>&1
         """
 
@@ -238,6 +242,7 @@ rule run_integration:
             str(r) for r in PARAMS.get("leiden_resolutions", [1.5, 3.0])
         ),
         max_iter_harmony=PARAMS.get("max_iter_harmony", 100),
+        cell_cycle_genes="config/cell_cycle_genes.json",
     resources:
         mem_mb=180000,
         runtime=DEF_RT,
@@ -254,6 +259,7 @@ rule run_integration:
             --n_top_genes {params.n_top_genes} \
             --leiden_resolutions {params.leiden_resolutions} \
             --max_iter_harmony {params.max_iter_harmony} \
+            --cell_cycle_genes {params.cell_cycle_genes} \
             > {log} 2>&1
         """
 

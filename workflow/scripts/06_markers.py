@@ -117,19 +117,11 @@ def main(args):
         is_log1p=args.is_log1p,
     )
 
-    # illico returns a DataFrame; the group column is named after group_key
-    # (or may be called "group" in some versions — handle both)
-    if args.group_key in de_df.columns:
-        group_col = args.group_key
-    elif "group" in de_df.columns:
-        group_col = "group"
-        de_df = de_df.rename(columns={"group": args.group_key})
-        group_col = args.group_key
-    else:
-        raise KeyError(
-            f"illico output does not contain a '{args.group_key}' or 'group' column. "
-            f"Columns found: {list(de_df.columns)}"
-        )
+    # illico returns a DataFrame with a MultiIndex (pert=group, feature=gene)
+    # and columns (p_value, statistic, fold_change). Flatten to a regular DataFrame.
+    de_df = de_df.reset_index()
+    de_df = de_df.rename(columns={"pert": args.group_key, "feature": "gene"})
+    group_col = args.group_key
 
     logger.info(f"  illico returned {len(de_df)} rows for {de_df[group_col].nunique()} groups")
 

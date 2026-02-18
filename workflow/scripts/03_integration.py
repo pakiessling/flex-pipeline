@@ -8,6 +8,7 @@ and clusters at two Leiden resolutions.
 
 import argparse
 import datetime
+import json
 import logging
 import os
 
@@ -113,6 +114,19 @@ def main(args):
         sc.tl.leiden(adata, resolution=res, key_added=key)
         logger.info(f"  resolution={res}: {adata.obs[key].nunique()} clusters")
 
+    logger.info("Cell cycle scoring …")
+    if args.cell_cycle_genes and os.path.exists(args.cell_cycle_genes):
+        with open(args.cell_cycle_genes) as fh:
+            cc = json.load(fh)
+        sc.tl.score_genes_cell_cycle(adata, cc["s_genes"], cc["g2m_genes"])
+        logger.info(
+            f"  Phase distribution: {adata.obs['phase'].value_counts().to_dict()}"
+        )
+    else:
+        logger.warning(
+            f"Cell cycle genes file not found: {args.cell_cycle_genes!r}. Skipping."
+        )
+
     logger.info("Computing UMAP …")
     sc.tl.umap(adata)
 
@@ -145,6 +159,7 @@ def main(args):
         "n_hvg": int(n_hvg),
         "leiden_resolutions": leiden_resolutions,
         "max_iter_harmony": args.max_iter_harmony,
+        "cell_cycle_scoring": os.path.exists(args.cell_cycle_genes),
         "software": {
             "scanpy": sc.__version__,
             "anndata": ad.__version__,
@@ -165,5 +180,7 @@ if __name__ == "__main__":
     parser.add_argument("--leiden_resolutions", default="1.5 3.0",
                         help="Space-separated list of Leiden resolutions")
     parser.add_argument("--max_iter_harmony", type=int, default=100)
+    parser.add_argument("--cell_cycle_genes", default="config/cell_cycle_genes.json",
+                        help="Path to cell_cycle_genes.json")
     args = parser.parse_args()
     main(args)

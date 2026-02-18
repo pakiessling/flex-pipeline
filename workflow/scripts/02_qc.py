@@ -166,7 +166,7 @@ def main(args):
     if not os.path.exists(args.input):
         raise FileNotFoundError(f"Input not found: {args.input}")
 
-    leiden_resolutions = [1.5, 3.0]  # Default; could be passed as CLI arg
+    leiden_resolutions = [float(r) for r in args.leiden_resolutions.split()]
 
     logger.info(f"[{args.sample}] Loading {args.input}")
     adata = sc.read_h5ad(args.input)
@@ -223,5 +223,7 @@ if __name__ == "__main__":
     parser.add_argument("--min_genes", type=int, default=2, help="Minimum genes per cell")
     parser.add_argument("--mad_threshold", type=int, default=5, help="MAD multiplier for outlier detection")
     parser.add_argument("--expected_doublet_rate", type=float, default=0.2)
+    parser.add_argument("--leiden_resolutions", default="1.5 3.0",
+                        help="Space-separated Leiden clustering resolutions")
     args = parser.parse_args()
     main(args)

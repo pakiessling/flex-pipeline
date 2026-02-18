@@ -98,7 +98,7 @@ if [ -n "$DRY_RUN" ]; then
     eval "$CMD"
 else
     mkdir -p logs
-    nohup eval "$CMD" > logs/pipeline_$(date +%Y%m%d_%H%M%S).log 2>&1 &
+    nohup bash -c "$CMD" > logs/pipeline_$(date +%Y%m%d_%H%M%S).log 2>&1 &
     echo "Pipeline started in background. PID: $!"
     echo "Monitor progress: tail -f logs/pipeline_*.log"
 fi
