@@ -20,6 +20,7 @@ dependencies:
   - statsmodels
   - leidenalg
   - python-igraph
+  - setuptools
   - pip
   - pip:
     # Fast Wilcoxon rank-sum DE: https://github.com/remydubois/illico
