@@ -1,0 +1,25 @@
+# Snakemake profile for snakemake-executor-plugin-slurm.
+# Resource defaults are conservative; override per-rule in the Snakefile
+# using resources: mem_mb=..., runtime=..., cpus_per_task=...
+
+executor: slurm
+
+default-resources:
+  mem_mb:           50000   # 50 GB
+  runtime:          1440    # 24 h (in minutes)
+  cpus_per_task:    4
+  slurm_account:    ""      # Overridden from config/cluster.yaml via launch.sh
+  slurm_partition:  ""      # Overridden from config/cluster.yaml via launch.sh
+
+# Snakemake behaviour
+restart-times:               0
+max-jobs-per-second:         50
+max-status-checks-per-second: 1
+local-cores:                 1
+latency-wait:                60
+jobs:                        500
+keep-going:                  true
+rerun-incomplete:            true
+printshellcmds:              true
+scheduler:                   greedy
+use-conda:                   true

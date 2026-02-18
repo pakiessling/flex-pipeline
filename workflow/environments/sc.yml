@@ -1,0 +1,28 @@
+# sc.yml — Main Python environment for QC, integration, marker genes,
+#           CyteType annotation, and report generation.
+# Used by: 02_qc.py, 03_integration.py, 05_cytetype.py, 06_markers.py, 07_report.py
+name: flex-sc
+channels:
+  - nodefaults
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.11
+  - scanpy>=1.10
+  - anndata>=0.10
+  - harmonypy>=0.0.9
+  - pacmap>=0.7
+  - doubletdetection>=4.2
+  - scipy
+  - numpy
+  - pandas
+  - matplotlib
+  - statsmodels
+  - leidenalg
+  - python-igraph
+  - pip
+  - pip:
+    # Fast Wilcoxon rank-sum DE: https://github.com/remydubois/illico
+    - illico
+    # LLM-based cluster annotation: https://github.com/NygenAnalytics/CyteType
+    - cytetype

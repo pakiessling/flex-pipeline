@@ -1,0 +1,69 @@
+# =============================================================================
+# flex-pipeline master configuration
+# =============================================================================
+# Edit this file to configure your analysis. See README.md for full docs.
+
+# Path to samples CSV (columns: sample_id, raw_matrix_path, filtered_matrix_path)
+samples: "samples.csv"
+
+# =============================================================================
+# Pipeline steps — set to false to skip
+# =============================================================================
+steps:
+  soupx: true           # Ambient RNA removal via SoupX (requires raw + filtered matrices)
+  qc: true              # Per-sample QC metrics, doublet detection, clustering
+  integration: true     # Multi-sample merge, Harmony batch correction, UMAP/PaCMAP
+  label_transfer: false # SingleR label transfer from a reference dataset (set reference_h5ad below)
+  markers: true         # Differential expression / marker genes via illico
+  cytetype: false       # CyteType LLM cluster annotation (requires markers step)
+  report: true          # Generate summary HTML report
+
+# =============================================================================
+# Analysis parameters
+# =============================================================================
+params:
+  # --- QC (02_qc.py) ---
+  min_genes: 2                  # Minimum genes per cell (hard filter)
+  mad_threshold: 5              # Median absolute deviation multiplier for outlier detection
+  expected_doublet_rate: 0.2    # Expected doublet rate for scrublet
+
+  # --- Integration (03_integration.py) ---
+  n_top_genes: 4000             # Number of highly variable genes
+  leiden_resolutions: [1.5, 3.0]  # Leiden clustering resolutions
+  max_iter_harmony: 100         # Maximum Harmony iterations
+
+  # --- Label transfer / SingleR (04_singleR.R) ---
+  # Path to a reference h5ad file containing labelled cells.
+  # Required when steps.label_transfer is true.
+  reference_h5ad: ""
+  reference_label_column: "cell_type"  # Column in reference .obs to use as labels
+
+  # --- Marker genes / illico (06_markers.py) ---
+  markers_group_key: "leiden_3"  # Obs column to group cells by
+  markers_n_top: 100             # Top N marker genes to report per cluster
+  markers_is_log1p: true         # Whether the expression matrix is already log1p-transformed
+
+  # --- CyteType (05_cytetype.py) ---
+  cytetype_group_key: "leiden_3"
+  cytetype_n_top_genes: 50
+  # Biological context given to the LLM. Be specific about tissue, disease, platform.
+  cytetype_study_context: >
+    Cardiac single-cell RNA-seq data from 10X Genomics FLEX. The sample is human
+    heart tissue. Classic immune and cardiac markers should be present.
+
+# =============================================================================
+# Output directories
+# =============================================================================
+output:
+  intermediate: "results/intermediate"   # Per-sample SoupX outputs
+  per_sample:   "results/per_sample"     # Per-sample QC h5ad files
+  qc_plots:     "results/qc"             # Per-sample QC plots and marker CSVs
+  integration:  "results/integration"    # Integrated h5ad (post-Harmony)
+  annotation:   "results/annotation"     # Annotation outputs (SingleR, CyteType)
+  markers:      "results/markers"        # Marker gene CSVs
+  report:       "results/report"         # HTML report
+
+# =============================================================================
+# Cluster / SLURM settings
+# =============================================================================
+# Edit cluster.yaml for HPC-specific values (account, partition, conda path).

@@ -1,0 +1,416 @@
+"""
+flex-pipeline: unified Snakemake workflow for 10X FLEX single-cell RNA-seq.
+
+Phases (all togglable in config/config.yaml):
+  01_soupx       — per-sample ambient RNA correction (SoupX)
+  02_qc          — per-sample QC, doublet detection, clustering
+  03_integration — multi-sample merge, Harmony, UMAP/PaCMAP
+  04_singleR     — label transfer from a reference dataset (optional)
+  05_cytetype    — LLM-based cluster annotation via CyteType (optional)
+  06_markers     — differential expression / marker genes via illico
+  07_report      — HTML summary report
+"""
+
+import os
+import pandas as pd
+
+configfile: "config/config.yaml"
+
+# ---------------------------------------------------------------------------
+# Load samples
+# ---------------------------------------------------------------------------
+_samples_path = config["samples"]
+if not os.path.exists(_samples_path):
+    raise FileNotFoundError(
+        f"samples CSV not found: {_samples_path!r}. "
+        "Create it with columns: sample_id, raw_matrix_path, filtered_matrix_path"
+    )
+
+samples_df = pd.read_csv(_samples_path)
+required_cols = {"sample_id", "raw_matrix_path", "filtered_matrix_path"}
+missing = required_cols - set(samples_df.columns)
+if missing:
+    raise ValueError(f"samples CSV is missing columns: {missing}")
+
+SAMPLES = samples_df["sample_id"].tolist()
+
+# ---------------------------------------------------------------------------
+# Step toggles
+# ---------------------------------------------------------------------------
+STEPS = config.get("steps", {})
+RUN_SOUPX          = STEPS.get("soupx",          True)
+RUN_QC             = STEPS.get("qc",             True)
+RUN_INTEGRATION    = STEPS.get("integration",    True)
+RUN_LABEL_TRANSFER = STEPS.get("label_transfer", False)
+RUN_MARKERS        = STEPS.get("markers",        True)
+RUN_CYTETYPE       = STEPS.get("cytetype",       False)
+RUN_REPORT         = STEPS.get("report",         True)
+
+# ---------------------------------------------------------------------------
+# Output directories
+# ---------------------------------------------------------------------------
+OUT = config.get("output", {})
+OUT_INTER  = OUT.get("intermediate", "results/intermediate")
+OUT_PS     = OUT.get("per_sample",   "results/per_sample")
+OUT_QC     = OUT.get("qc_plots",     "results/qc")
+OUT_INT    = OUT.get("integration",  "results/integration")
+OUT_ANN    = OUT.get("annotation",   "results/annotation")
+OUT_MRK    = OUT.get("markers",      "results/markers")
+OUT_REP    = OUT.get("report",       "results/report")
+
+# ---------------------------------------------------------------------------
+# Parameters
+# ---------------------------------------------------------------------------
+PARAMS = config.get("params", {})
+
+# ---------------------------------------------------------------------------
+# Cluster resources (read from config, with sane defaults)
+# ---------------------------------------------------------------------------
+CLUSTER   = config.get("cluster", {})
+ACCOUNT   = CLUSTER.get("slurm_account",   "")
+PARTITION = CLUSTER.get("slurm_partition",  "")
+DEF_MEM   = CLUSTER.get("default_mem_mb",  50000)
+DEF_RT    = CLUSTER.get("default_runtime", 1440)
+DEF_CPUS  = CLUSTER.get("default_cpus",    4)
+
+# ---------------------------------------------------------------------------
+# Derived paths used across rules
+# ---------------------------------------------------------------------------
+# The h5ad fed into the marker-gene step depends on what ran before it.
+def _markers_input():
+    if RUN_LABEL_TRANSFER:
+        return f"{OUT_ANN}/integrated_labeled.h5ad"
+    return f"{OUT_INT}/integrated.h5ad"
+
+def _report_input_h5ad():
+    if RUN_CYTETYPE:
+        return f"{OUT_ANN}/integrated_cytetype.h5ad"
+    if RUN_MARKERS:
+        return f"{OUT_ANN}/integrated_markers.h5ad"
+    if RUN_LABEL_TRANSFER:
+        return f"{OUT_ANN}/integrated_labeled.h5ad"
+    return f"{OUT_INT}/integrated.h5ad"
+
+# ---------------------------------------------------------------------------
+# rule all — declare final targets
+# ---------------------------------------------------------------------------
+def _final_targets():
+    targets = []
+    if RUN_REPORT:
+        targets.append(f"{OUT_REP}/report.html")
+        return targets
+    if RUN_CYTETYPE:
+        targets.append(f"{OUT_ANN}/cytetype_annotation.json")
+        return targets
+    if RUN_MARKERS:
+        targets.append(f"{OUT_MRK}/marker_genes_{PARAMS.get('markers_group_key','leiden_3')}.csv")
+        return targets
+    if RUN_LABEL_TRANSFER:
+        targets.append(f"{OUT_ANN}/integrated_labeled.h5ad")
+        return targets
+    if RUN_INTEGRATION:
+        targets.append(f"{OUT_INT}/integrated.h5ad")
+        return targets
+    if RUN_QC:
+        targets += expand(f"{OUT_PS}/{{sample}}_clean.h5ad", sample=SAMPLES)
+        return targets
+    targets += expand(f"{OUT_INTER}/{{sample}}_cleaned.h5ad", sample=SAMPLES)
+    return targets
+
+rule all:
+    input: _final_targets()
+
+
+# ===========================================================================
+# Step 1 — SoupX (or passthrough if disabled)
+# ===========================================================================
+if RUN_SOUPX:
+    rule run_soupx:
+        input:
+            raw_matrix=lambda wc: samples_df.loc[
+                samples_df["sample_id"] == wc.sample, "raw_matrix_path"
+            ].values[0],
+            filtered_matrix=lambda wc: samples_df.loc[
+                samples_df["sample_id"] == wc.sample, "filtered_matrix_path"
+            ].values[0],
+        output:
+            h5ad=f"{OUT_INTER}/{{sample}}_cleaned.h5ad",
+        log:
+            f"logs/soupx/{{sample}}.log",
+        resources:
+            mem_mb=DEF_MEM,
+            runtime=DEF_RT,
+            cpus_per_task=DEF_CPUS,
+            slurm_account=ACCOUNT,
+            slurm_partition=PARTITION,
+        conda:
+            "environments/py_r.yml"
+        shell:
+            """
+            python workflow/scripts/01_soupx.py \
+                --sample {wildcards.sample} \
+                --output {output.h5ad} \
+                --raw_matrix {input.raw_matrix} \
+                --filtered_matrix {input.filtered_matrix} \
+                > {log} 2>&1
+            """
+else:
+    rule skip_soupx:
+        input:
+            filtered_matrix=lambda wc: samples_df.loc[
+                samples_df["sample_id"] == wc.sample, "filtered_matrix_path"
+            ].values[0],
+        output:
+            h5ad=f"{OUT_INTER}/{{sample}}_cleaned.h5ad",
+        log:
+            f"logs/skip_soupx/{{sample}}.log",
+        resources:
+            mem_mb=DEF_MEM,
+            runtime=DEF_RT,
+            cpus_per_task=DEF_CPUS,
+            slurm_account=ACCOUNT,
+            slurm_partition=PARTITION,
+        conda:
+            "environments/py_r.yml"
+        shell:
+            """
+            python workflow/scripts/01_soupx.py \
+                --sample {wildcards.sample} \
+                --output {output.h5ad} \
+                --filtered_matrix {input.filtered_matrix} \
+                --skip \
+                > {log} 2>&1
+            """
+
+
+# ===========================================================================
+# Step 2 — QC
+# ===========================================================================
+rule run_qc:
+    input:
+        h5ad=f"{OUT_INTER}/{{sample}}_cleaned.h5ad",
+    output:
+        h5ad=f"{OUT_PS}/{{sample}}_clean.h5ad",
+    log:
+        f"logs/qc/{{sample}}.log",
+    params:
+        qc_folder=OUT_QC,
+        min_genes=PARAMS.get("min_genes", 2),
+        mad_threshold=PARAMS.get("mad_threshold", 5),
+        expected_doublet_rate=PARAMS.get("expected_doublet_rate", 0.2),
+    resources:
+        mem_mb=DEF_MEM,
+        runtime=DEF_RT,
+        cpus_per_task=DEF_CPUS,
+        slurm_account=ACCOUNT,
+        slurm_partition=PARTITION,
+    conda:
+        "environments/sc.yml"
+    shell:
+        """
+        python workflow/scripts/02_qc.py \
+            --input {input.h5ad} \
+            --sample {wildcards.sample} \
+            --output {output.h5ad} \
+            --qc_folder {params.qc_folder} \
+            --min_genes {params.min_genes} \
+            --mad_threshold {params.mad_threshold} \
+            --expected_doublet_rate {params.expected_doublet_rate} \
+            > {log} 2>&1
+        """
+
+
+# ===========================================================================
+# Step 3 — Integration (Harmony + UMAP + PaCMAP)
+# ===========================================================================
+rule run_integration:
+    input:
+        h5ads=expand(f"{OUT_PS}/{{sample}}_clean.h5ad", sample=SAMPLES),
+    output:
+        h5ad=f"{OUT_INT}/integrated.h5ad",
+    log:
+        f"logs/integration/integration.log",
+    params:
+        input_dir=OUT_PS,
+        output_file=f"{OUT_INT}/integrated.h5ad",
+        n_top_genes=PARAMS.get("n_top_genes", 4000),
+        leiden_resolutions=" ".join(
+            str(r) for r in PARAMS.get("leiden_resolutions", [1.5, 3.0])
+        ),
+        max_iter_harmony=PARAMS.get("max_iter_harmony", 100),
+    resources:
+        mem_mb=180000,
+        runtime=DEF_RT,
+        cpus_per_task=12,
+        slurm_account=ACCOUNT,
+        slurm_partition=PARTITION,
+    conda:
+        "environments/sc.yml"
+    shell:
+        """
+        python workflow/scripts/03_integration.py \
+            --input_dir {params.input_dir} \
+            --output_file {params.output_file} \
+            --n_top_genes {params.n_top_genes} \
+            --leiden_resolutions {params.leiden_resolutions} \
+            --max_iter_harmony {params.max_iter_harmony} \
+            > {log} 2>&1
+        """
+
+
+# ===========================================================================
+# Step 4 — SingleR label transfer (optional)
+# ===========================================================================
+if RUN_LABEL_TRANSFER:
+    _ref = PARAMS.get("reference_h5ad", "")
+    if not _ref:
+        raise ValueError(
+            "steps.label_transfer is true but params.reference_h5ad is empty. "
+            "Set the path to your reference h5ad in config/config.yaml."
+        )
+
+    rule run_label_transfer:
+        input:
+            query=f"{OUT_INT}/integrated.h5ad",
+            reference=_ref,
+        output:
+            h5ad=f"{OUT_ANN}/integrated_labeled.h5ad",
+        log:
+            f"logs/label_transfer/label_transfer.log",
+        params:
+            label_column=PARAMS.get("reference_label_column", "cell_type"),
+        resources:
+            mem_mb=180000,
+            runtime=DEF_RT,
+            cpus_per_task=DEF_CPUS,
+            slurm_account=ACCOUNT,
+            slurm_partition=PARTITION,
+        conda:
+            "environments/r_singler.yml"
+        shell:
+            """
+            Rscript workflow/scripts/04_singleR.R \
+                --query {input.query} \
+                --reference {input.reference} \
+                --label_column {params.label_column} \
+                --output {output.h5ad} \
+                > {log} 2>&1
+            """
+
+
+# ===========================================================================
+# Step 6 — Marker genes (illico)
+# ===========================================================================
+_GROUP_KEY = PARAMS.get("markers_group_key", "leiden_3")
+_MARKERS_CSV = f"{OUT_MRK}/marker_genes_{_GROUP_KEY}.csv"
+
+rule run_markers:
+    input:
+        h5ad=_markers_input(),
+    output:
+        h5ad=f"{OUT_ANN}/integrated_markers.h5ad",
+        markers_csv=_MARKERS_CSV,
+    log:
+        f"logs/markers/markers_{_GROUP_KEY}.log",
+    params:
+        markers_dir=OUT_MRK,
+        group_key=_GROUP_KEY,
+        n_top=PARAMS.get("markers_n_top", 100),
+        is_log1p="--is_log1p" if PARAMS.get("markers_is_log1p", True) else "",
+    resources:
+        mem_mb=180000,
+        runtime=DEF_RT,
+        cpus_per_task=DEF_CPUS,
+        slurm_account=ACCOUNT,
+        slurm_partition=PARTITION,
+    conda:
+        "environments/sc.yml"
+    shell:
+        """
+        python workflow/scripts/06_markers.py \
+            --input_file {input.h5ad} \
+            --output_file {output.h5ad} \
+            --markers_dir {params.markers_dir} \
+            --group_key {params.group_key} \
+            --n_top {params.n_top} \
+            {params.is_log1p} \
+            > {log} 2>&1
+        """
+
+
+# ===========================================================================
+# Step 5 — CyteType (optional, requires markers)
+# ===========================================================================
+if RUN_CYTETYPE:
+    rule run_cytetype:
+        input:
+            h5ad=f"{OUT_ANN}/integrated_markers.h5ad",
+        output:
+            h5ad=f"{OUT_ANN}/integrated_cytetype.h5ad",
+            json=f"{OUT_ANN}/cytetype_annotation.json",
+        log:
+            f"logs/cytetype/cytetype.log",
+        params:
+            group_key=PARAMS.get("cytetype_group_key", "leiden_3"),
+            n_top_genes=PARAMS.get("cytetype_n_top_genes", 50),
+            study_context=PARAMS.get(
+                "cytetype_study_context",
+                "Single-cell RNA-seq data from heart tissue.",
+            ),
+        resources:
+            mem_mb=DEF_MEM,
+            runtime=DEF_RT,
+            cpus_per_task=DEF_CPUS,
+            slurm_account=ACCOUNT,
+            slurm_partition=PARTITION,
+        conda:
+            "environments/sc.yml"
+        shell:
+            """
+            python workflow/scripts/05_cytetype.py \
+                --input_file {input.h5ad} \
+                --output_file {output.h5ad} \
+                --output_json {output.json} \
+                --group_key {params.group_key} \
+                --n_top_genes {params.n_top_genes} \
+                --study_context "{params.study_context}" \
+                > {log} 2>&1
+            """
+
+
+# ===========================================================================
+# Step 7 — HTML report
+# ===========================================================================
+rule run_report:
+    input:
+        h5ad=_report_input_h5ad(),
+        cytetype_json=(
+            f"{OUT_ANN}/cytetype_annotation.json" if RUN_CYTETYPE else []
+        ),
+    output:
+        html=f"{OUT_REP}/report.html",
+    log:
+        f"logs/report/report.log",
+    params:
+        output_dir=OUT_REP,
+        cytetype_json_arg=(
+            f"--cytetype_json {OUT_ANN}/cytetype_annotation.json"
+            if RUN_CYTETYPE
+            else ""
+        ),
+    resources:
+        mem_mb=DEF_MEM,
+        runtime=360,
+        cpus_per_task=DEF_CPUS,
+        slurm_account=ACCOUNT,
+        slurm_partition=PARTITION,
+    conda:
+        "environments/sc.yml"
+    shell:
+        """
+        python workflow/scripts/07_report.py \
+            --input_file {input.h5ad} \
+            --output_dir {params.output_dir} \
+            {params.cytetype_json_arg} \
+            > {log} 2>&1
+        """

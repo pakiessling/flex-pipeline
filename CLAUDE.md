@@ -4,37 +4,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-This is a **Snakemake-based bioinformatics pipeline** for processing 10X Genomics FLEX single-cell RNA-seq data. It is organized into two sequential phases:
-
-1. **`01_cleaning/`** — Per-sample QC: ambient RNA removal (SoupX) and quality control filtering
-2. **`02_integration/`** — Multi-sample integration: Harmony batch correction, cell type annotation (CellTypist), and marker gene identification
-
-The pipeline runs on SLURM HPC clusters using Conda-managed environments.
+This is a **Snakemake-based bioinformatics pipeline** for processing 10X Genomics FLEX single-cell RNA-seq data. The pipeline is unified and fully modular — all steps run from CellRanger output to final report, controlled by a single config file.
 
 ## Running the Pipeline
 
-**Phase 1 (per-sample cleaning):**
+**Start pipeline (SLURM HPC):**
 ```bash
-cd 01_cleaning
 ./launch.sh
-# Equivalent: snakemake --conda-frontend conda --profile slurm --jobscript jobscript.sh --config samples="samples.csv"
 ```
 
-**Phase 2 (integration):**
+**Dry-run (preview without submitting):**
 ```bash
-cd 02_integration
-./launch.sh
-# Equivalent: snakemake --executor slurm --conda-frontend conda --config input="00_cleaning/output"
+./launch.sh --dry-run
 ```
 
-**Dry-run (preview without execution):**
+**Run locally (testing):**
 ```bash
-snakemake -n --config samples="samples.csv"
-```
-
-**Run a single rule locally:**
-```bash
-snakemake --use-conda <rule_name> --config samples="samples.csv"
+./launch.sh --local
 ```
 
 ## Architecture
@@ -42,55 +28,82 @@ snakemake --use-conda <rule_name> --config samples="samples.csv"
 ### Data Flow
 
 ```
-CellRanger output (raw + filtered H5 matrices)
-        ↓ [01_SoupX.py]   - Ambient RNA correction via R/SoupX (rpy2 bridge)
-        ↓ [02_qc.py]      - QC metrics, doublet detection, clustering per sample
-        ↓ H5AD files (one per sample, in 01_cleaning/output/)
-        ↓ [03_integration.py] - Merge samples, Harmony batch correction, UMAP/PaCMAP
-        ↓ [04_celltyping.py]  - CellTypist annotation (immune + heart models)
-        ↓ [05_markers.R]      - Wilcoxon rank-sum marker genes via Presto
+samples.csv + CellRanger H5 matrices
+  → [01_soupx.py]      Ambient RNA correction via R/SoupX (optional)
+  → [02_qc.py]         QC metrics, doublet detection, clustering per sample
+  → [03_integration.py] Merge samples, Harmony batch correction, UMAP/PaCMAP
+  → [04_singleR.R]     Label transfer from reference h5ad via SingleR (optional)
+  → [06_markers.py]    Wilcoxon rank-sum marker genes via illico
+  → [05_cytetype.py]   LLM-based cluster annotation via CyteType (optional)
+  → [07_report.py]     HTML summary report
 ```
 
 ### Key Design Decisions
 
-- **AnnData layers** store multiple processing states: `b4_soupx` and `after_soupx`. `03_integration.py` checks which layer to use based on whether SoupX ran successfully.
-- **Cells are marked but not removed** during QC (`02_qc.py`). Doublets and low-quality cells are annotated in `.obs` metadata; hard filtering happens in `03_integration.py` (removes `predicted_doublet == True`).
-- **SoupX graceful fallback**: if SoupX fails, `01_SoupX.py` falls back to the unmodified filtered matrix rather than crashing the pipeline.
-- **Reproducibility**: all scripts set `np.random.seed(0)`, `random.seed(0)`, and `PYTHONHASHSEED=0`.
-- **Cell type annotation is sequential**: immune model (`Immune_All_Low.pkl`) runs first, then heart-specific (`Healthy_Adult_Heart.pkl`). Multiple prediction columns with confidence scores are stored in `.obs`.
+- **Modular steps**: each step is toggled in `config/config.yaml` under `steps:`. Disabled steps either produce passthrough outputs or are excluded from the DAG.
+- **Single config**: all analysis parameters, step toggles, and cluster settings live in `config/config.yaml` and `config/cluster.yaml`. No hardcoded values in scripts.
+- **Cells marked not removed** during QC (`02_qc.py`). Hard filter for doublets happens in `03_integration.py`.
+- **SoupX graceful fallback**: `01_soupx.py` falls back to the unmodified filtered matrix on failure.
+- **Reproducibility**: all scripts set `np.random.seed(0)`, `random.seed(0)`, `PYTHONHASHSEED=0`, and write software versions + parameters to `adata.uns["pipeline_log"]`.
+- **AnnData layers**: `b4_soupx` and `after_soupx`. Integration checks which layer to use.
+- **illico replaces R/Presto**: marker genes are computed via `illico.asymptotic_wilcoxon` and stored in scanpy's `rank_genes_groups` format so CyteType can consume them.
+- **Cell cycle genes** are loaded from `config/cell_cycle_genes.json` (not hardcoded in scripts).
+
+### Directory Structure
+
+```
+flex-pipeline/
+├── config/
+│   ├── config.yaml          # Master config: steps, params, output dirs
+│   ├── cluster.yaml         # SLURM account, partition, conda path
+│   └── cell_cycle_genes.json
+├── workflow/
+│   ├── Snakefile            # Unified pipeline DAG
+│   ├── scripts/
+│   │   ├── 01_soupx.py
+│   │   ├── 02_qc.py
+│   │   ├── 03_integration.py
+│   │   ├── 04_singleR.R
+│   │   ├── 05_cytetype.py
+│   │   ├── 06_markers.py
+│   │   └── 07_report.py
+│   └── environments/
+│       ├── py_r.yml         # Step 1: Python + R + SoupX
+│       ├── sc.yml           # Steps 2,3,5,6,7: scanpy + illico + cytetype
+│       └── r_singler.yml    # Step 4: R + SingleR
+├── profiles/
+│   └── config.yaml          # snakemake-executor-plugin-slurm settings
+├── samples.csv              # Fill in paths to CellRanger outputs
+├── launch.sh                # Entry point
+├── jobscript.sh             # SLURM job template
+└── results/                 # Created at runtime
+    ├── intermediate/        # Per-sample SoupX outputs
+    ├── per_sample/          # Per-sample QC h5ad files
+    ├── qc/                  # QC plots
+    ├── integration/         # Integrated h5ad
+    ├── annotation/          # SingleR + CyteType outputs
+    ├── markers/             # Marker gene CSVs
+    └── report/              # HTML report
+```
 
 ### Conda Environments
 
 | File | Used by | Key packages |
 |------|---------|--------------|
-| `01_cleaning/enviroments/py_r.yml` | `run_soupx` rule | Python 3.11, R 4.3.3, SoupX, rpy2, anndata2ri |
-| `01_cleaning/enviroments/sc.yml` | `run_qc` rule | ScanPy, Celltypist, DoubletDetection, PaCMAP |
-| `02_integration/enviroment.yml` | all phase 2 rules | Harmony, CellTypist, anndataR, Presto, DESeq2 |
+| `workflow/environments/py_r.yml` | `run_soupx` / `skip_soupx` | Python 3.11, R 4.3, SoupX, rpy2, anndata2ri |
+| `workflow/environments/sc.yml` | `run_qc`, `run_integration`, `run_markers`, `run_cytetype`, `run_report` | scanpy, harmonypy, illico, cytetype, pacmap |
+| `workflow/environments/r_singler.yml` | `run_label_transfer` | R 4.3, SingleR, anndataR |
 
 ### SLURM Configuration
 
-- Phase 1 (`01_cleaning/slurm/config.yaml`): 50 GB RAM, 24hr walltime, max 100 jobs
-- Phase 2 (`02_integration/profiles/config.yaml`): 180 GB RAM, 12 CPUs, 12hr walltime, max 500 jobs
-- Account: `p0020567`; conda assumed at `$HOME/miniconda3` with fallback to `/work/mz637064/miniconda3/`
+Uses `snakemake-executor-plugin-slurm` (configured in `profiles/config.yaml`).
+Default resources: 50 GB RAM, 1440 min walltime, 4 CPUs.
+Integration and markers rules request 180 GB / 12 CPUs.
+Account and partition are read from `config/cluster.yaml` by `launch.sh`.
 
 ### Input Format
 
-Phase 1 requires a `samples.csv` with columns:
+`samples.csv` columns:
 - `sample_id` — unique identifier
-- `raw_matrix_path` — path to CellRanger raw matrix directory
-- `filtered_matrix_path` — path to CellRanger filtered matrix directory
-
-Phase 2 auto-discovers all `.h5ad` files in the configured input directory.
-
-### Output Structure
-
-```
-01_cleaning/
-├── intermediate/   # SoupX outputs
-├── output/         # Final cleaned H5AD per sample
-└── qc/             # QC plots (PNG)
-
-02_integration/
-├── 03_output/      # Integrated H5AD
-└── 04_output/      # Cell-typed H5AD, marker gene CSVs
-```
+- `raw_matrix_path` — path to CellRanger raw matrix H5 file
+- `filtered_matrix_path` — path to CellRanger filtered matrix H5 file

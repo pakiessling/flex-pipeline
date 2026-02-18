@@ -1,0 +1,17 @@
+# r_singler.yml — R environment for SingleR label transfer (04_singleR.R).
+# Used by: 04_singleR.R
+name: flex-r-singler
+channels:
+  - nodefaults
+  - conda-forge
+  - bioconda
+dependencies:
+  - r-base=4.3
+  - bioconductor-singler>=2.4
+  - bioconductor-singlecellexperiment>=1.24
+  - bioconductor-biocparallel>=1.36
+  - r-argparser>=0.7
+  # anndataR for loading .h5ad files in R
+  - pip
+  - pip:
+    - anndataR

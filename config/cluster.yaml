@@ -1,0 +1,24 @@
+# =============================================================================
+# Cluster / HPC configuration
+# =============================================================================
+# Edit this file once to match your HPC environment.
+# These settings are read by launch.sh and used to configure SLURM submission.
+
+# SLURM account to charge compute time to
+slurm_account: "YOUR_ACCOUNT"
+
+# SLURM partition (queue) to submit jobs to
+slurm_partition: "YOUR_PARTITION"
+
+# Path to your Conda/Miniconda installation root.
+# Leave empty ("") to auto-detect: tries $HOME/miniconda3, then $HOME/anaconda3.
+conda_root: ""
+
+# Name or path of the Conda environment that has Snakemake installed.
+# Leave empty ("") if snakemake is already in your PATH.
+snakemake_env: ""
+
+# Default resource requests (override per-rule in Snakefile resources: block)
+default_mem_mb: 50000      # Memory in MB
+default_runtime: 1440      # Wall time in minutes (24 h)
+default_cpus: 4            # CPUs per task
