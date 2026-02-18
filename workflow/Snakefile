@@ -219,7 +219,7 @@ rule run_qc:
             --min_genes {params.min_genes} \
             --mad_threshold {params.mad_threshold} \
             --expected_doublet_rate {params.expected_doublet_rate} \
-            --leiden_resolutions {params.leiden_resolutions} \
+            --leiden_resolutions "{params.leiden_resolutions}" \
             > {log} 2>&1
         """
 
@@ -257,7 +257,7 @@ rule run_integration:
             --input_dir {params.input_dir} \
             --output_file {params.output_file} \
             --n_top_genes {params.n_top_genes} \
-            --leiden_resolutions {params.leiden_resolutions} \
+            --leiden_resolutions "{params.leiden_resolutions}" \
             --max_iter_harmony {params.max_iter_harmony} \
             --cell_cycle_genes {params.cell_cycle_genes} \
             > {log} 2>&1
