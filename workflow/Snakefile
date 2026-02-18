@@ -147,7 +147,7 @@ if RUN_SOUPX:
             "environments/py_r.yml"
         shell:
             """
-            python workflow/scripts/01_soupx.py \
+            Rscript workflow/scripts/01_soupx.R \
                 --sample {wildcards.sample} \
                 --output {output.h5ad} \
                 --raw_matrix {input.raw_matrix} \
@@ -174,7 +174,7 @@ else:
             "environments/py_r.yml"
         shell:
             """
-            python workflow/scripts/01_soupx.py \
+            Rscript workflow/scripts/01_soupx.R \
                 --sample {wildcards.sample} \
                 --output {output.h5ad} \
                 --filtered_matrix {input.filtered_matrix} \

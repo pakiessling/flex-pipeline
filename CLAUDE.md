@@ -29,7 +29,7 @@ This is a **Snakemake-based bioinformatics pipeline** for processing 10X Genomic
 
 ```
 samples.csv + CellRanger H5 matrices
-  → [01_soupx.py]      Ambient RNA correction via R/SoupX (optional)
+  → [01_soupx.R]       Ambient RNA correction via SoupX (optional)
   → [02_qc.py]         QC metrics, doublet detection, clustering per sample
   → [03_integration.py] Merge samples, Harmony batch correction, UMAP/PaCMAP
   → [04_singleR.R]     Label transfer from reference h5ad via SingleR (optional)
@@ -46,6 +46,7 @@ samples.csv + CellRanger H5 matrices
 - **SoupX graceful fallback**: `01_soupx.py` falls back to the unmodified filtered matrix on failure.
 - **Reproducibility**: all scripts set `np.random.seed(0)`, `random.seed(0)`, `PYTHONHASHSEED=0`, and write software versions + parameters to `adata.uns["pipeline_log"]`.
 - **AnnData layers**: `b4_soupx` and `after_soupx`. Integration checks which layer to use.
+- **SoupX is pure R**: `01_soupx.R` loads H5 files via `Seurat::Read10X_h5`, builds a `SoupChannel` directly (bypassing `load10X()` which can't handle the FLEX `sample_*` directory naming), and writes h5ad via `anndataR`. No Python/rpy2 bridge.
 - **illico replaces R/Presto**: marker genes are computed via `illico.asymptotic_wilcoxon` and stored in scanpy's `rank_genes_groups` format so CyteType can consume them.
 - **Cell cycle genes** are loaded from `config/cell_cycle_genes.json` (not hardcoded in scripts).
 
@@ -60,7 +61,7 @@ flex-pipeline/
 ├── workflow/
 │   ├── Snakefile            # Unified pipeline DAG
 │   ├── scripts/
-│   │   ├── 01_soupx.py
+│   │   ├── 01_soupx.R
 │   │   ├── 02_qc.py
 │   │   ├── 03_integration.py
 │   │   ├── 04_singleR.R
@@ -90,7 +91,7 @@ flex-pipeline/
 
 | File | Used by | Key packages |
 |------|---------|--------------|
-| `workflow/environments/py_r.yml` | `run_soupx` / `skip_soupx` | Python 3.11, R 4.3, SoupX, rpy2, anndata2ri |
+| `workflow/environments/py_r.yml` | `run_soupx` / `skip_soupx` | R 4.3, SoupX, anndataR (via pak) |
 | `workflow/environments/sc.yml` | `run_qc`, `run_integration`, `run_markers`, `run_cytetype`, `run_report` | scanpy, harmonypy, illico, cytetype, pacmap |
 | `workflow/environments/r_singler.yml` | `run_label_transfer` | R 4.3, SingleR, anndataR |
 

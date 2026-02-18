@@ -1,0 +1,132 @@
+#!/usr/bin/env Rscript
+# 01_soupx.R — Ambient RNA correction using SoupX.
+#
+# Pure R implementation. Loads filtered and raw 10X H5 files directly via
+# Seurat::Read10X_h5, builds a SoupChannel, and runs autoEstCont/adjustCounts.
+# Falls back to the unmodified filtered matrix on failure or when --skip is set.
+# Writes output as .h5ad via anndataR.
+
+if (!requireNamespace("anndataR", quietly = TRUE)) {
+  pak::pak("scverse/anndataR@v0.1.0")
+}
+
+suppressPackageStartupMessages({
+  library(SoupX)
+  library(Matrix)
+  library(anndataR)
+  library(argparser)
+})
+
+parser <- arg_parser("SoupX ambient RNA correction")
+parser <- add_argument(parser, "--sample",          help = "Sample identifier")
+parser <- add_argument(parser, "--output",          help = "Output .h5ad path")
+parser <- add_argument(parser, "--filtered_matrix", help = "Filtered 10x H5 matrix path")
+parser <- add_argument(parser, "--raw_matrix",      help = "Raw 10x H5 matrix path", default = NA)
+parser <- add_argument(parser, "--skip",            help = "Skip SoupX correction", flag = TRUE)
+args <- parse_args(parser)
+
+if (!args$skip && (is.na(args$raw_matrix) || args$raw_matrix == "")) {
+  stop("--raw_matrix is required unless --skip is set")
+}
+
+# ---------------------------------------------------------------------------
+# Load filtered matrix
+# ---------------------------------------------------------------------------
+cat(sprintf("[%s] Loading filtered matrix: %s\n", args$sample, args$filtered_matrix))
+filt_mat <- Seurat::Read10X_h5(args$filtered_matrix)
+# FLEX outputs can return a named list of modalities; keep Gene Expression only
+if (is.list(filt_mat)) {
+  filt_mat <- filt_mat[["Gene Expression"]]
+}
+
+# ---------------------------------------------------------------------------
+# Run SoupX (or skip)
+# ---------------------------------------------------------------------------
+soupx_run <- FALSE
+
+if (args$skip) {
+  cat(sprintf("[%s] SoupX skipped (--skip flag).\n", args$sample))
+  corrected_mat <- filt_mat
+
+} else {
+  cat(sprintf("[%s] Loading raw matrix: %s\n", args$sample, args$raw_matrix))
+  raw_mat <- Seurat::Read10X_h5(args$raw_matrix)
+  if (is.list(raw_mat)) {
+    raw_mat <- raw_mat[["Gene Expression"]]
+  }
+
+  # Align genes (raw may contain more features than filtered)
+  common_genes <- intersect(rownames(filt_mat), rownames(raw_mat))
+  filt_mat <- filt_mat[common_genes, ]
+  raw_mat  <- raw_mat[common_genes, ]
+
+  result <- tryCatch({
+    cat(sprintf("[%s] Building SoupChannel and running autoEstCont …\n", args$sample))
+    sc <- SoupChannel(raw_mat, filt_mat)
+    sc <- autoEstCont(sc, doPlot = FALSE)
+    out <- adjustCounts(sc, roundToInt = TRUE)
+    list(corrected = out, success = TRUE)
+  }, error = function(e) {
+    cat(sprintf("[%s] SoupX failed (%s); falling back to filtered matrix.\n",
+                args$sample, conditionMessage(e)))
+    list(corrected = filt_mat, success = FALSE)
+  })
+
+  corrected_mat <- result$corrected
+  soupx_run     <- result$success
+
+  if (soupx_run) {
+    before_sum <- sum(filt_mat)
+    after_sum  <- sum(corrected_mat)
+    pct        <- (after_sum - before_sum) / before_sum * 100
+    cat(sprintf("[%s] SoupX complete. Counts before=%.0f, after=%.0f (%+.2f%%)\n",
+                args$sample, before_sum, after_sum, pct))
+  }
+}
+
+# ---------------------------------------------------------------------------
+# Build AnnData and write h5ad
+# ---------------------------------------------------------------------------
+n_cells <- ncol(filt_mat)
+n_genes <- nrow(filt_mat)
+cat(sprintf("[%s] Cells: %d, Genes: %d\n", args$sample, n_cells, n_genes))
+
+obs_df <- data.frame(row.names = colnames(filt_mat),
+                     Sample    = args$sample,
+                     stringsAsFactors = FALSE)
+var_df <- data.frame(row.names = rownames(filt_mat),
+                     stringsAsFactors = FALSE)
+
+# AnnData expects cells × genes; Read10X_h5 returns genes × cells
+layers <- list(b4_soupx = t(filt_mat))
+if (soupx_run) {
+  layers[["after_soupx"]] <- t(corrected_mat)
+}
+
+adata <- AnnData(
+  X      = t(corrected_mat),
+  obs    = obs_df,
+  var    = var_df,
+  layers = layers,
+  uns    = list(
+    pipeline_log = list(
+      soupx = list(
+        completed_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S"),
+        soupx_run    = soupx_run,
+        skipped      = args$skip,
+        n_cells      = n_cells,
+        n_genes      = n_genes,
+        software     = list(
+          SoupX    = as.character(packageVersion("SoupX")),
+          anndataR = as.character(packageVersion("anndataR"))
+        )
+      )
+    )
+  )
+)
+
+dir.create(dirname(args$output), showWarnings = FALSE, recursive = TRUE)
+write_h5ad(adata, args$output)
+cat(sprintf("[%s] Saved → %s (SoupX: %s)\n",
+            args$sample, args$output,
+            ifelse(soupx_run, "yes", "no/skipped")))

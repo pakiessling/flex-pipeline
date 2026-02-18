@@ -1,21 +1,15 @@
-# py_r.yml — Environment for the SoupX ambient RNA correction step (01_soupx.py).
-# Requires both Python (scanpy, anndata2ri) and R (SoupX) in the same environment
-# because rpy2 bridges the two languages at runtime.
-name: flex-py-r
+# py_r.yml — R environment for the SoupX ambient RNA correction step (01_soupx.R).
+# No Python required: SoupX runs natively in R, output is written via anndataR.
+name: flex-r-soupx
 channels:
   - nodefaults
   - conda-forge
   - bioconda
 dependencies:
-  - python=3.11
   - r-base=4.3
-  - scanpy>=1.10
-  - anndata>=0.10
-  - anndata2ri>=1.3
-  - rpy2>=3.5
-  - scipy
-  - numpy
   - r-soupx>=1.6
   - r-matrix
+  - r-argparser>=0.7
   - r-pak
-  # anndataR is not in conda; r-pak installs it from CRAN at runtime (see 01_soupx.py)
+  # anndataR is not in conda; r-pak installs it from CRAN at runtime (see 01_soupx.R)
+  # Seurat (required for Read10X_h5) is pulled in as a transitive dependency of r-soupx
