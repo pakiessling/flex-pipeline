@@ -19,6 +19,7 @@ import numpy as np
 import pandas as pd
 import scanpy as sc
 from scipy.stats import median_abs_deviation as mad
+from statsmodels.stats.multitest import multipletests
 
 os.environ["PYTHONHASHSEED"] = "0"
 import random
@@ -33,6 +34,44 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 warnings.simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
+
+
+def illico_to_rank_genes_groups(de_df: pd.DataFrame, group_col: str, n_top: int) -> dict:
+    """Convert flat illico output to scanpy's rank_genes_groups structured-recarray format."""
+    groups = sorted(de_df[group_col].astype(str).unique())
+    gene_dtype    = [(g, "U200")     for g in groups]
+    float32_dtype = [(g, np.float32) for g in groups]
+    float64_dtype = [(g, np.float64) for g in groups]
+
+    names_arr     = np.empty(n_top, dtype=gene_dtype)
+    scores_arr    = np.zeros(n_top, dtype=float32_dtype)
+    pvals_arr     = np.ones(n_top,  dtype=float64_dtype)
+    pvals_adj_arr = np.ones(n_top,  dtype=float64_dtype)
+    logfcs_arr    = np.zeros(n_top, dtype=float32_dtype)
+
+    for g in groups:
+        grp = de_df[de_df[group_col].astype(str) == g].copy()
+        grp = grp.sort_values("statistic", ascending=False).reset_index(drop=True)
+        n = min(len(grp), n_top)
+        _, padj, _, _ = multipletests(grp["p_value"].values, method="fdr_bh")
+        names_arr[g][:n]     = grp["gene"].values[:n]
+        scores_arr[g][:n]    = grp["statistic"].values[:n].astype(np.float32)
+        pvals_arr[g][:n]     = grp["p_value"].values[:n]
+        pvals_adj_arr[g][:n] = padj[:n]
+        logfcs_arr[g][:n]    = np.log2(
+            np.maximum(grp["fold_change"].values[:n], 1e-10)
+        ).astype(np.float32)
+
+    return {
+        "params": {
+            "groupby": group_col, "reference": "rest",
+            "method": "wilcoxon", "use_raw": False,
+            "layer": None, "corr_method": "benjamini-hochberg",
+        },
+        "names": names_arr, "scores": scores_arr,
+        "pvals": pvals_arr, "pvals_adj": pvals_adj_arr,
+        "logfoldchanges": logfcs_arr,
+    }
 
 
 def calculate_qc(adata):
@@ -87,10 +126,20 @@ def cluster_and_embed(adata, leiden_resolutions):
         )
 
     # Rank genes before scaling (scaling can introduce negative values)
+    try:
+        from illico import asymptotic_wilcoxon
+    except ImportError:
+        raise ImportError(
+            "illico is not installed. Install with: pip install illico\n"
+            "See https://github.com/remydubois/illico"
+        )
     for res in leiden_resolutions:
         key = f"leiden_{str(res).replace('.', '_')}"
         rg_key = f"rank_genes_groups_{str(res).replace('.', '_')}"
-        sc.tl.rank_genes_groups(adata, key, method="wilcoxon", tie_correct=True, key_added=rg_key)
+        de_df = asymptotic_wilcoxon(adata, group_keys=key, reference=None, is_log1p=True)
+        de_df = de_df.reset_index()
+        de_df = de_df.rename(columns={"pert": key, "feature": "gene"})
+        adata.uns[rg_key] = illico_to_rank_genes_groups(de_df, key, n_top=100)
 
     sc.pp.scale(adata, zero_center=False)
     sc.pp.pca(adata, use_highly_variable=True)
