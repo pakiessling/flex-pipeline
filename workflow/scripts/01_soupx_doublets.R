@@ -1,10 +1,11 @@
 #!/usr/bin/env Rscript
-# 01_soupx.R — Ambient RNA correction using SoupX.
+# 01_soupx.R — Ambient RNA correction (SoupX) + doublet detection (scDblFinder).
 #
 # Pure R implementation. Loads filtered and raw 10X H5 files directly via
 # Seurat::Read10X_h5, builds a SoupChannel, and runs autoEstCont/adjustCounts.
 # Falls back to the unmodified filtered matrix on failure or when --skip is set.
-# Writes output as .h5ad via anndataR.
+# Runs scDblFinder on the (corrected) counts and stores scDblFinder.score and
+# scDblFinder.class in obs. Writes output as .h5ad via anndataR.
 
 if (!requireNamespace("anndataR", quietly = TRUE)) {
   pak::pak("scverse/anndataR@v0.1.0")
@@ -15,14 +16,18 @@ suppressPackageStartupMessages({
   library(Matrix)
   library(anndataR)
   library(argparser)
+  library(scDblFinder)
+  library(SingleCellExperiment)
+  library(BiocParallel)
 })
 
-parser <- arg_parser("SoupX ambient RNA correction")
-parser <- add_argument(parser, "--sample",          help = "Sample identifier")
-parser <- add_argument(parser, "--output",          help = "Output .h5ad path")
-parser <- add_argument(parser, "--filtered_matrix", help = "Filtered 10x H5 matrix path")
-parser <- add_argument(parser, "--raw_matrix",      help = "Raw 10x H5 matrix path", default = NA)
-parser <- add_argument(parser, "--skip",            help = "Skip SoupX correction", flag = TRUE)
+parser <- arg_parser("SoupX ambient RNA correction + scDblFinder doublet detection")
+parser <- add_argument(parser, "--sample",                help = "Sample identifier")
+parser <- add_argument(parser, "--output",                help = "Output .h5ad path")
+parser <- add_argument(parser, "--filtered_matrix",       help = "Filtered 10x H5 matrix path")
+parser <- add_argument(parser, "--raw_matrix",            help = "Raw 10x H5 matrix path", default = NA)
+parser <- add_argument(parser, "--skip",                  help = "Skip SoupX correction", flag = TRUE)
+parser <- add_argument(parser, "--expected_doublet_rate", help = "Expected doublet rate (dbr for scDblFinder)", default = NA)
 args <- parse_args(parser)
 
 if (!args$skip && (is.na(args$raw_matrix) || args$raw_matrix == "")) {
@@ -99,15 +104,51 @@ if (args$skip) {
 }
 
 # ---------------------------------------------------------------------------
-# Build AnnData and write h5ad
+# scDblFinder doublet detection
 # ---------------------------------------------------------------------------
 n_cells <- ncol(filt_mat)
 n_genes <- nrow(filt_mat)
 cat(sprintf("[%s] Cells: %d, Genes: %d\n", args$sample, n_cells, n_genes))
 
-obs_df <- data.frame(Sample    = rep(args$sample, n_cells),
-                     row.names = colnames(filt_mat),
-                     stringsAsFactors = FALSE)
+cat(sprintf("[%s] Running scDblFinder …\n", args$sample))
+set.seed(0)
+
+dbr_arg <- if (!is.na(args$expected_doublet_rate)) as.numeric(args$expected_doublet_rate) else NULL
+
+dbl_df <- tryCatch({
+  sce <- SingleCellExperiment(assays = list(counts = corrected_mat))
+  sce <- scDblFinder(sce, dbr = dbr_arg, BPPARAM = SerialParam())
+  data.frame(
+    scDblFinder.score = sce$scDblFinder.score,
+    scDblFinder.class = as.character(sce$scDblFinder.class),
+    row.names         = colnames(sce),
+    stringsAsFactors  = FALSE
+  )
+}, error = function(e) {
+  cat(sprintf("[%s] scDblFinder failed (%s); filling with NA.\n",
+              args$sample, conditionMessage(e)))
+  data.frame(
+    scDblFinder.score = rep(NA_real_,      n_cells),
+    scDblFinder.class = rep(NA_character_, n_cells),
+    row.names         = colnames(filt_mat),
+    stringsAsFactors  = FALSE
+  )
+})
+
+n_doublets <- sum(dbl_df$scDblFinder.class == "doublet", na.rm = TRUE)
+cat(sprintf("[%s] scDblFinder: %d / %d doublets (%.1f%%)\n",
+            args$sample, n_doublets, n_cells, 100 * n_doublets / n_cells))
+
+# ---------------------------------------------------------------------------
+# Build AnnData and write h5ad
+# ---------------------------------------------------------------------------
+obs_df <- data.frame(
+  Sample                = rep(args$sample, n_cells),
+  scDblFinder.score     = dbl_df[colnames(filt_mat), "scDblFinder.score"],
+  scDblFinder.class     = dbl_df[colnames(filt_mat), "scDblFinder.class"],
+  row.names             = colnames(filt_mat),
+  stringsAsFactors      = FALSE
+)
 var_df <- data.frame(row.names = rownames(filt_mat),
                      stringsAsFactors = FALSE)
 
@@ -133,6 +174,16 @@ adata <- AnnData(
         software     = list(
           SoupX    = as.character(packageVersion("SoupX")),
           anndataR = as.character(packageVersion("anndataR"))
+        )
+      ),
+      scdblfinder = list(
+        completed_at         = format(Sys.time(), "%Y-%m-%dT%H:%M:%S"),
+        n_doublets           = n_doublets,
+        n_cells              = n_cells,
+        doublet_rate         = n_doublets / n_cells,
+        expected_doublet_rate = if (!is.na(args$expected_doublet_rate)) as.numeric(args$expected_doublet_rate) else NULL,
+        software             = list(
+          scDblFinder = as.character(packageVersion("scDblFinder"))
         )
       )
     )

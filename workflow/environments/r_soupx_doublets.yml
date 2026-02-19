@@ -1,0 +1,17 @@
+# r_soupx_doublets.yml — R environment for SoupX ambient RNA correction and
+#                        scDblFinder doublet detection (01_soupx_doublets.R).
+name: flex-r-soupx-doublets
+channels:
+  - nodefaults
+  - conda-forge
+  - bioconda
+dependencies:
+  - r-base=4.3
+  - r-soupx>=1.6
+  - r-matrix
+  - r-argparser>=0.7
+  - r-pak
+  - r-hdf5r
+  - bioconductor-scdblfinder
+  # anndataR is not in conda; r-pak installs it from CRAN at runtime (see 01_soupx_doublets.R)
+  # Seurat (required for Read10X_h5) is pulled in as a transitive dependency of r-soupx

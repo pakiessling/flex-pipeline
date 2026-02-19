@@ -1,6 +1,7 @@
 # sc.yml — Main Python environment for QC, integration, marker genes,
 #           CyteType annotation, and report generation.
 # Used by: 02_qc.py, 03_integration.py, 05_cytetype.py, 06_markers.py, 07_report.py
+# Note: doublet detection runs in 01_soupx_doublets.R via scDblFinder (R); not needed here.
 name: flex-sc
 channels:
   - nodefaults
@@ -12,7 +13,6 @@ dependencies:
   - anndata>=0.10
   - harmonypy>=0.0.9
   - pacmap>=0.7
-  - doubletdetection>=4.2
   - scipy
   - numpy
   - pandas

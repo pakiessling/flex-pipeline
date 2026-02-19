@@ -22,10 +22,12 @@ steps:
 # Analysis parameters
 # =============================================================================
 params:
+  # --- SoupX + doublet detection (01_soupx_doublets.R) ---
+  expected_doublet_rate: 0.2    # Expected doublet rate passed as dbr to scDblFinder
+
   # --- QC (02_qc.py) ---
   min_genes: 2                  # Minimum genes per cell (hard filter)
   mad_threshold: 5              # Median absolute deviation multiplier for outlier detection
-  expected_doublet_rate: 0.2    # Expected doublet rate for scrublet
 
   # --- Integration (03_integration.py) ---
   n_top_genes: 4000             # Number of highly variable genes

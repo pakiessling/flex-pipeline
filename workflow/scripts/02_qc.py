@@ -1,9 +1,9 @@
 """
-02_qc.py — Per-sample quality control and doublet detection.
+02_qc.py — Per-sample quality control.
 
-Cells are *marked* (not removed) so that the integration step can apply
-a consistent hard filter. Doublets are flagged in .obs["predicted_doublet"]
-and low-quality cells in .obs["cell_quality"].
+Cells are *marked* (not removed). Doublets are annotated by scDblFinder in the
+preceding SoupX step (.obs["scDblFinder.class"] / .obs["scDblFinder.score"]).
+Low-quality cells are flagged here in .obs["cell_quality"].
 """
 
 import argparse
@@ -12,7 +12,6 @@ import logging
 import os
 import warnings
 
-import doubletdetection
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -71,29 +70,6 @@ def flag_outliers(adata, nmads: int):
     return adata
 
 
-def detect_doublets(adata, expected_doublet_rate: float):
-    """Run Scrublet + DoubletDetection and store results in .obs."""
-    sc.pp.scrublet(adata, expected_doublet_rate=expected_doublet_rate)
-
-    clf = doubletdetection.BoostClassifier(
-        n_iters=10,
-        clustering_algorithm="leiden",
-        standard_scaling=True,
-        pseudocount=0.1,
-        n_jobs=-1,
-    )
-    doublets = clf.fit(adata.X).predict(p_thresh=1e-10, voter_thresh=0.5)
-    adata.obs["clf_doublet"] = doublets
-    adata.obs["clf_score"] = clf.doublet_score()
-
-    n_scrublet = adata.obs["predicted_doublet"].sum()
-    n_clf = doublets.sum()
-    logger.info(
-        f"  Doublets — Scrublet: {n_scrublet} ({100*n_scrublet/adata.n_obs:.1f}%), "
-        f"DoubletDetection: {n_clf} ({100*n_clf/adata.n_obs:.1f}%)"
-    )
-    return adata
-
 
 def cluster_and_embed(adata, leiden_resolutions):
     sc.pp.highly_variable_genes(adata, flavor="seurat_v3", n_top_genes=4000)
@@ -128,8 +104,8 @@ def save_qc_plots(adata, sample: str, qc_folder: str, leiden_resolutions):
     os.makedirs(sample_dir, exist_ok=True)
 
     color_cols = [
-        "predicted_doublet",
-        "clf_doublet",
+        "scDblFinder.class",
+        "scDblFinder.score",
         "cell_quality",
         "log1p_total_counts",
         "log1p_n_genes_by_counts",
@@ -183,9 +159,6 @@ def main(args):
     logger.info(f"[{args.sample}] Flagging outlier cells (MAD threshold={args.mad_threshold}) …")
     adata = flag_outliers(adata, nmads=args.mad_threshold)
 
-    logger.info(f"[{args.sample}] Detecting doublets …")
-    adata = detect_doublets(adata, expected_doublet_rate=args.expected_doublet_rate)
-
     logger.info(f"[{args.sample}] Clustering and embedding …")
     adata = cluster_and_embed(adata, leiden_resolutions)
 
@@ -194,18 +167,18 @@ def main(args):
 
     # Reproducibility log
     import anndata as ad
+    n_dbl = int((adata.obs["scDblFinder.class"] == "doublet").sum()) \
+        if "scDblFinder.class" in adata.obs else 0
     adata.uns.setdefault("pipeline_log", {})["qc"] = {
         "completed_at": datetime.datetime.now().isoformat(),
         "n_cells_input": int(n_start),
         "n_cells_output": int(adata.n_obs),
         "n_low_quality": int((adata.obs["cell_quality"] == "low-quality").sum()),
-        "n_scrublet_doublets": int(adata.obs["predicted_doublet"].sum()),
+        "n_scdblfinder_doublets": n_dbl,
         "mad_threshold": args.mad_threshold,
-        "expected_doublet_rate": args.expected_doublet_rate,
         "software": {
             "scanpy": sc.__version__,
             "anndata": ad.__version__,
-            "doubletdetection": doubletdetection.__version__,
         },
     }
 
@@ -222,7 +195,6 @@ if __name__ == "__main__":
     parser.add_argument("--qc_folder", required=True, help="Folder for QC plots and CSVs")
     parser.add_argument("--min_genes", type=int, default=2, help="Minimum genes per cell")
     parser.add_argument("--mad_threshold", type=int, default=5, help="MAD multiplier for outlier detection")
-    parser.add_argument("--expected_doublet_rate", type=float, default=0.2)
     parser.add_argument("--leiden_resolutions", default="1.5 3.0",
                         help="Space-separated Leiden clustering resolutions")
     args = parser.parse_args()

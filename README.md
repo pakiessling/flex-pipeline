@@ -51,8 +51,8 @@ All steps can be toggled on/off in `config/config.yaml` under `steps:`.
 
 | Step | Script | Description | Toggle |
 |---|---|---|---|
-| 1 | `01_soupx.py` | Ambient RNA removal (SoupX) | `soupx` |
-| 2 | `02_qc.py` | Per-sample QC, doublet detection, clustering | `qc` |
+| 1 | `01_soupx_doublets.R` | Ambient RNA correction (SoupX) + doublet scoring (scDblFinder) | `soupx` |
+| 2 | `02_qc.py` | Per-sample QC metrics, outlier flagging, clustering | `qc` |
 | 3 | `03_integration.py` | Harmony batch correction, UMAP, PaCMAP | `integration` |
 | 4 | `04_singleR.R` | Label transfer from reference dataset (SingleR) | `label_transfer` |
 | 5 | `05_cytetype.py` | LLM-based cluster annotation (CyteType) | `cytetype` |
@@ -63,16 +63,29 @@ All steps can be toggled on/off in `config/config.yaml` under `steps:`.
 
 ```
 samples.csv + CellRanger H5 matrices
-  → [01_soupx]   results/intermediate/{sample}_cleaned.h5ad
-  → [02_qc]      results/per_sample/{sample}_clean.h5ad
-  → [03_intgr]   results/integration/integrated.h5ad
-  → [04_singler] results/annotation/integrated_labeled.h5ad   (optional)
-  → [06_markers] results/annotation/integrated_markers.h5ad
-               + results/markers/marker_genes_leiden_3.csv
-  → [05_cytetype] results/annotation/integrated_cytetype.h5ad (optional)
-                + results/annotation/cytetype_annotation.json
-  → [07_report]  results/report/report.html
+  → [01_soupx_doublets]  results/intermediate/{sample}_cleaned.h5ad
+                          (obs: scDblFinder.score, scDblFinder.class)
+  → [02_qc]              results/per_sample/{sample}_clean.h5ad
+                          (obs: cell_quality, leiden_*)
+  → [03_integration]     results/integration/integrated.h5ad
+  → [04_singler]         results/annotation/integrated_labeled.h5ad   (optional)
+  → [06_markers]         results/annotation/integrated_markers.h5ad
+                        + results/markers/marker_genes_leiden_3.csv
+  → [05_cytetype]        results/annotation/integrated_cytetype.h5ad  (optional)
+                        + results/annotation/cytetype_annotation.json
+  → [07_report]          results/report/report.html
 ```
+
+### Doublet detection
+
+Doublet detection is performed by [scDblFinder](https://bioconductor.org/packages/scDblFinder/) in step 1, on the SoupX-corrected counts before any QC filtering. Results are stored in two `.obs` columns that persist through the entire pipeline:
+
+| Column | Type | Description |
+|---|---|---|
+| `scDblFinder.score` | float | Doublet score (higher = more likely doublet) |
+| `scDblFinder.class` | string | `"singlet"` or `"doublet"` |
+
+Doublets are **never hard-filtered** — they are carried as annotations so downstream analyses can choose how to handle them.
 
 ---
 
@@ -89,6 +102,8 @@ steps:
   cytetype: false       # Requires CyteType API access
 
 params:
+  mad_threshold: 5                # MAD multiplier for per-sample QC outlier detection
+  expected_doublet_rate: 0.05     # Passed as dbr to scDblFinder
   n_top_genes: 4000
   leiden_resolutions: [1.5, 3.0]
   reference_h5ad: "/path/to/reference.h5ad"  # For label_transfer step
@@ -112,9 +127,9 @@ Three conda environments are used (defined in `workflow/environments/`):
 
 | File | Used by | Key packages |
 |---|---|---|
-| `py_r.yml` | Step 1 (SoupX) | Python + R + rpy2 + SoupX |
-| `sc.yml` | Steps 2, 3, 5, 6, 7 | scanpy, harmonypy, illico, cytetype |
-| `r_singler.yml` | Step 4 (SingleR) | R + SingleR + anndataR |
+| `r_soupx_doublets.yml` | Step 1 | R, SoupX, scDblFinder, anndataR |
+| `sc.yml` | Steps 2, 3, 5, 6, 7 | scanpy, harmonypy, illico, cytetype, pacmap |
+| `r_singler.yml` | Step 4 | R, SingleR, anndataR |
 
 Build environments with:
 ```bash
@@ -136,9 +151,3 @@ params:
 ### CyteType annotation
 Set `steps.cytetype: true`. CyteType requires an API key (see [CyteType docs](https://github.com/NygenAnalytics/CyteType)).
 The markers step must also be enabled (`steps.markers: true`).
-
----
-
-## Notes on the old two-phase structure
-
-The previous `01_cleaning/` and `02_integration/` directories are retained for reference but superseded by this unified pipeline. They can be safely deleted once you have validated the new pipeline on your data.

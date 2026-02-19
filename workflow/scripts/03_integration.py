@@ -1,9 +1,9 @@
 """
 03_integration.py — Multi-sample integration via Harmony.
 
-Loads all per-sample h5ad files, removes doublets, computes HVGs,
-runs Harmony batch correction, generates UMAP and PaCMAP embeddings,
-and clusters at two Leiden resolutions.
+Loads all per-sample h5ad files, computes HVGs, runs Harmony batch correction,
+generates UMAP and PaCMAP embeddings, and clusters at two Leiden resolutions.
+Doublets are annotated in obs["scDblFinder.class"] but not removed here.
 """
 
 import argparse
@@ -75,17 +75,14 @@ def main(args):
 
     adata = sc.concat(adatas, join="outer", merge="same")
     del adatas
+    logger.info(f"Merged: {adata.n_obs} cells")
 
-    # Remove doublets (hard filter applied here; cells are only marked in QC step)
-    n_before = adata.n_obs
-    if "predicted_doublet" in adata.obs.columns:
-        adata = adata[~adata.obs["predicted_doublet"].astype(bool)].copy()
+    if "scDblFinder.class" in adata.obs.columns:
+        n_dbl = (adata.obs["scDblFinder.class"] == "doublet").sum()
         logger.info(
-            f"Removed {n_before - adata.n_obs} doublets. "
-            f"Remaining: {adata.n_obs} cells"
+            f"  {n_dbl} doublets annotated in obs['scDblFinder.class'] "
+            f"({100 * n_dbl / adata.n_obs:.1f}%) — kept, not removed"
         )
-    else:
-        logger.warning("'predicted_doublet' column not found; no doublets removed.")
 
     logger.info(f"Computing {args.n_top_genes} highly variable genes …")
     sc.pp.highly_variable_genes(
