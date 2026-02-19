@@ -12,6 +12,7 @@ import json
 import logging
 import os
 
+import harmonypy as hm
 import numpy as np
 import pacmap
 import scanpy as sc
@@ -103,9 +104,14 @@ def main(args):
     sc.pp.pca(adata)
 
     logger.info(f"Running Harmony (max_iter={args.max_iter_harmony}) …")
-    sc.external.pp.harmony_integrate(
-        adata, max_iter_harmony=args.max_iter_harmony, key=["Sample"]
+    ho = hm.run_harmony(
+        adata.obsm["X_pca"],
+        adata.obs,
+        "Sample",
+        max_iter_harmony=args.max_iter_harmony,
+        random_state=0,
     )
+    adata.obsm["X_pca_harmony"] = ho.Z_corr
     sc.pp.neighbors(adata, use_rep="X_pca_harmony")
 
     logger.info("Leiden clustering …")
