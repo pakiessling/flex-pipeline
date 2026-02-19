@@ -35,6 +35,19 @@ query_ad <- read_h5ad(args$query, to = "SingleCellExperiment")
 cat("Loading reference:", args$reference, "\n")
 ref_ad <- read_h5ad(args$reference, to = "SingleCellExperiment")
 
+# SingleR requires an assay named "logcounts". anndataR names the main matrix
+# assay "X" when converting from h5ad, so rename it here for both objects.
+ensure_logcounts <- function(sce) {
+  nms <- SummarizedExperiment::assayNames(sce)
+  if (!"logcounts" %in% nms && length(nms) > 0) {
+    SummarizedExperiment::assayNames(sce)[1] <- "logcounts"
+    cat("  Renamed assay '", nms[1], "' → 'logcounts'\n", sep = "")
+  }
+  sce
+}
+query_ad <- ensure_logcounts(query_ad)
+ref_ad   <- ensure_logcounts(ref_ad)
+
 # Validate that the label column exists in the reference
 if (!(args$label_column %in% colnames(colData(ref_ad)))) {
   stop(paste0(
