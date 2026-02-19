@@ -77,7 +77,7 @@ def detect_doublets(adata, expected_doublet_rate: float):
 
     clf = doubletdetection.BoostClassifier(
         n_iters=10,
-        clustering_algorithm="louvain",
+        clustering_algorithm="leiden",
         standard_scaling=True,
         pseudocount=0.1,
         n_jobs=-1,
