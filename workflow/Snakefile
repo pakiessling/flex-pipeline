@@ -351,6 +351,7 @@ if RUN_LABEL_TRANSFER:
             f"logs/label_transfer/label_transfer.log",
         params:
             label_column=PARAMS.get("reference_label_column", "cell_type"),
+            plot_dir=OUT_ANN,
         resources:
             mem_mb=180000,
             runtime=DEF_RT,
@@ -366,6 +367,7 @@ if RUN_LABEL_TRANSFER:
                 --reference {input.reference} \
                 --label_column {params.label_column} \
                 --output {output.h5ad} \
+                --plot_dir {params.plot_dir} \
                 > {log} 2>&1
             """
 
@@ -425,6 +427,7 @@ if RUN_CYTETYPE:
         params:
             group_key=PARAMS.get("cytetype_group_key", "leiden_3"),
             n_top_genes=PARAMS.get("cytetype_n_top_genes", 50),
+            plot_dir=OUT_ANN,
             study_context=PARAMS.get(
                 "cytetype_study_context",
                 "Single-cell RNA-seq data from heart tissue.",
@@ -445,6 +448,7 @@ if RUN_CYTETYPE:
                 --output_json {output.json} \
                 --group_key {params.group_key} \
                 --n_top_genes {params.n_top_genes} \
+                --plot_dir {params.plot_dir} \
                 --study_context "{params.study_context}" \
                 > {log} 2>&1
             """
