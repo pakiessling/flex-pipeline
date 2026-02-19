@@ -12,27 +12,51 @@ Phases (all togglable in config/config.yaml):
 """
 
 import os
+import re
 import pandas as pd
 
 configfile: "config/config.yaml"
 
 # ---------------------------------------------------------------------------
 # Load samples
+# Supports two input modes (mixable within the same run):
+#   CellRanger: columns  sample_id, raw_matrix_path, filtered_matrix_path
+#   Pre-processed h5ad:  columns  sample_id, h5ad_path
 # ---------------------------------------------------------------------------
 _samples_path = config["samples"]
 if not os.path.exists(_samples_path):
     raise FileNotFoundError(
         f"samples CSV not found: {_samples_path!r}. "
-        "Create it with columns: sample_id, raw_matrix_path, filtered_matrix_path"
+        "Create it with columns:\n"
+        "  CellRanger input: sample_id, raw_matrix_path, filtered_matrix_path\n"
+        "  Pre-processed h5ad input: sample_id, h5ad_path"
     )
 
 samples_df = pd.read_csv(_samples_path)
-required_cols = {"sample_id", "raw_matrix_path", "filtered_matrix_path"}
-missing = required_cols - set(samples_df.columns)
-if missing:
-    raise ValueError(f"samples CSV is missing columns: {missing}")
+
+_has_h5ad_col = "h5ad_path" in samples_df.columns
+_has_cr_cols  = {"raw_matrix_path", "filtered_matrix_path"}.issubset(samples_df.columns)
+if not _has_h5ad_col and not _has_cr_cols:
+    raise ValueError(
+        "samples CSV must contain either:\n"
+        "  - 'raw_matrix_path' + 'filtered_matrix_path' columns (CellRanger mode)\n"
+        "  - 'h5ad_path' column (pre-processed h5ad mode)\n"
+        "Both can coexist for mixed runs."
+    )
 
 SAMPLES = samples_df["sample_id"].tolist()
+
+# Partition samples by input type
+if _has_h5ad_col:
+    _h5ad_mask = (
+        samples_df["h5ad_path"].notna()
+        & (samples_df["h5ad_path"].astype(str).str.strip() != "")
+    )
+else:
+    _h5ad_mask = pd.Series([False] * len(samples_df), index=samples_df.index)
+
+H5AD_SAMPLES       = samples_df.loc[_h5ad_mask,  "sample_id"].tolist()
+CELLRANGER_SAMPLES = samples_df.loc[~_h5ad_mask, "sample_id"].tolist()
 
 # ---------------------------------------------------------------------------
 # Step toggles
@@ -122,71 +146,109 @@ rule all:
 
 
 # ===========================================================================
-# Step 1 — SoupX (or passthrough if disabled)
+# Step 1a — Passthrough for pre-processed h5ad input
 # ===========================================================================
-if RUN_SOUPX:
-    rule run_soupx:
+if H5AD_SAMPLES:
+    _h5ad_wc = "|".join(re.escape(s) for s in H5AD_SAMPLES)
+
+    rule passthrough_h5ad:
+        """Copy a pre-processed h5ad directly to the intermediate directory.
+        Bypasses SoupX and scDblFinder. scDblFinder columns are optional
+        downstream — 02_qc.py and 03_integration.py both handle their absence.
+        """
         input:
-            raw_matrix=lambda wc: samples_df.loc[
-                samples_df["sample_id"] == wc.sample, "raw_matrix_path"
-            ].values[0],
-            filtered_matrix=lambda wc: samples_df.loc[
-                samples_df["sample_id"] == wc.sample, "filtered_matrix_path"
+            h5ad=lambda wc: samples_df.loc[
+                samples_df["sample_id"] == wc.sample, "h5ad_path"
             ].values[0],
         output:
             h5ad=f"{OUT_INTER}/{{sample}}_cleaned.h5ad",
+        wildcard_constraints:
+            sample=_h5ad_wc,
         log:
-            f"logs/soupx/{{sample}}.log",
-        params:
-            expected_doublet_rate=PARAMS.get("expected_doublet_rate", 0.05),
+            f"logs/passthrough_h5ad/{{sample}}.log",
         resources:
-            mem_mb=DEF_MEM,
-            runtime=DEF_RT,
-            cpus_per_task=DEF_CPUS,
+            mem_mb=500,
+            runtime=30,
+            cpus_per_task=1,
             slurm_account=ACCOUNT,
             slurm_partition=PARTITION,
-        conda:
-            "environments/r_soupx_doublets.yml"
         shell:
-            """
-            Rscript workflow/scripts/01_soupx_doublets.R \
-                --sample {wildcards.sample} \
-                --output {output.h5ad} \
-                --raw_matrix {input.raw_matrix} \
-                --filtered_matrix {input.filtered_matrix} \
-                --expected_doublet_rate {params.expected_doublet_rate} \
-                > {log} 2>&1
-            """
-else:
-    rule skip_soupx:
-        input:
-            filtered_matrix=lambda wc: samples_df.loc[
-                samples_df["sample_id"] == wc.sample, "filtered_matrix_path"
-            ].values[0],
-        output:
-            h5ad=f"{OUT_INTER}/{{sample}}_cleaned.h5ad",
-        log:
-            f"logs/skip_soupx/{{sample}}.log",
-        params:
-            expected_doublet_rate=PARAMS.get("expected_doublet_rate", 0.05),
-        resources:
-            mem_mb=DEF_MEM,
-            runtime=DEF_RT,
-            cpus_per_task=DEF_CPUS,
-            slurm_account=ACCOUNT,
-            slurm_partition=PARTITION,
-        conda:
-            "environments/r_soupx_doublets.yml"
-        shell:
-            """
-            Rscript workflow/scripts/01_soupx_doublets.R \
-                --sample {wildcards.sample} \
-                --output {output.h5ad} \
-                --filtered_matrix {input.filtered_matrix} \
-                --skip \
-                --expected_doublet_rate {params.expected_doublet_rate} \
-                > {log} 2>&1
-            """
+            "cp {input.h5ad} {output.h5ad} 2>{log}"
+
+
+# ===========================================================================
+# Step 1b — SoupX (or passthrough if disabled) for CellRanger samples
+# ===========================================================================
+if CELLRANGER_SAMPLES:
+    _cr_wc = "|".join(re.escape(s) for s in CELLRANGER_SAMPLES)
+
+    if RUN_SOUPX:
+        rule run_soupx:
+            input:
+                raw_matrix=lambda wc: samples_df.loc[
+                    samples_df["sample_id"] == wc.sample, "raw_matrix_path"
+                ].values[0],
+                filtered_matrix=lambda wc: samples_df.loc[
+                    samples_df["sample_id"] == wc.sample, "filtered_matrix_path"
+                ].values[0],
+            output:
+                h5ad=f"{OUT_INTER}/{{sample}}_cleaned.h5ad",
+            wildcard_constraints:
+                sample=_cr_wc,
+            log:
+                f"logs/soupx/{{sample}}.log",
+            params:
+                expected_doublet_rate=PARAMS.get("expected_doublet_rate", 0.05),
+            resources:
+                mem_mb=DEF_MEM,
+                runtime=DEF_RT,
+                cpus_per_task=DEF_CPUS,
+                slurm_account=ACCOUNT,
+                slurm_partition=PARTITION,
+            conda:
+                "environments/r_soupx_doublets.yml"
+            shell:
+                """
+                Rscript workflow/scripts/01_soupx_doublets.R \
+                    --sample {wildcards.sample} \
+                    --output {output.h5ad} \
+                    --raw_matrix {input.raw_matrix} \
+                    --filtered_matrix {input.filtered_matrix} \
+                    --expected_doublet_rate {params.expected_doublet_rate} \
+                    > {log} 2>&1
+                """
+    else:
+        rule skip_soupx:
+            input:
+                filtered_matrix=lambda wc: samples_df.loc[
+                    samples_df["sample_id"] == wc.sample, "filtered_matrix_path"
+                ].values[0],
+            output:
+                h5ad=f"{OUT_INTER}/{{sample}}_cleaned.h5ad",
+            wildcard_constraints:
+                sample=_cr_wc,
+            log:
+                f"logs/skip_soupx/{{sample}}.log",
+            params:
+                expected_doublet_rate=PARAMS.get("expected_doublet_rate", 0.05),
+            resources:
+                mem_mb=DEF_MEM,
+                runtime=DEF_RT,
+                cpus_per_task=DEF_CPUS,
+                slurm_account=ACCOUNT,
+                slurm_partition=PARTITION,
+            conda:
+                "environments/r_soupx_doublets.yml"
+            shell:
+                """
+                Rscript workflow/scripts/01_soupx_doublets.R \
+                    --sample {wildcards.sample} \
+                    --output {output.h5ad} \
+                    --filtered_matrix {input.filtered_matrix} \
+                    --skip \
+                    --expected_doublet_rate {params.expected_doublet_rate} \
+                    > {log} 2>&1
+                """
 
 
 # ===========================================================================

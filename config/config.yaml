@@ -3,7 +3,10 @@
 # =============================================================================
 # Edit this file to configure your analysis. See README.md for full docs.
 
-# Path to samples CSV (columns: sample_id, raw_matrix_path, filtered_matrix_path)
+# Path to samples CSV. Two input modes are supported and can be mixed:
+#   CellRanger mode:  sample_id, raw_matrix_path, filtered_matrix_path
+#   Pre-processed h5ad:  sample_id, h5ad_path
+# Rows with h5ad_path bypass SoupX/scDblFinder and feed directly into QC.
 samples: "samples.csv"
 
 # =============================================================================
