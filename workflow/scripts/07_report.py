@@ -165,7 +165,7 @@ def _section_qc(adata) -> str:
 
 def _section_integration(adata) -> str:
     imgs = []
-    for col in ["Sample", "leiden_1_5", "leiden_3", "singler_label", "cytetype_annotation_clusters", "cytetype_label", "phase", "scDblFinder.class", "cell_quality"]:
+    for col in ["Sample", "leiden_3", "singler_label", "cytetype_annotation_clusters", "cytetype_label", "phase", "scDblFinder.class", "cell_quality"]:
         if col in adata.obs.columns:
             fig = _plot_umap_by(adata, col, col.replace("_", " ").title())
             if fig:
