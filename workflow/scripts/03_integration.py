@@ -32,9 +32,7 @@ logger = logging.getLogger(__name__)
 
 def load_samples(input_dir: str):
     paths = [
-        os.path.join(input_dir, f)
-        for f in os.listdir(input_dir)
-        if f.endswith(".h5ad")
+        os.path.join(input_dir, f) for f in os.listdir(input_dir) if f.endswith(".h5ad")
     ]
     if not paths:
         raise FileNotFoundError(
@@ -155,6 +153,7 @@ def main(args):
 
     # Reproducibility log
     import anndata as ad
+
     adata.uns.setdefault("pipeline_log", {})["integration"] = {
         "completed_at": datetime.datetime.now().isoformat(),
         "n_samples": len(adata.obs["Sample"].unique()),
@@ -176,14 +175,24 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Integrate scRNA-seq samples via Harmony.")
-    parser.add_argument("--input_dir",    required=True, help="Directory with per-sample .h5ad files")
-    parser.add_argument("--output_file",  required=True, help="Output .h5ad path")
-    parser.add_argument("--n_top_genes",  type=int, default=4000)
-    parser.add_argument("--leiden_resolutions", default="1.5 3.0",
-                        help="Space-separated list of Leiden resolutions")
+    parser = argparse.ArgumentParser(
+        description="Integrate scRNA-seq samples via Harmony."
+    )
+    parser.add_argument(
+        "--input_dir", required=True, help="Directory with per-sample .h5ad files"
+    )
+    parser.add_argument("--output_file", required=True, help="Output .h5ad path")
+    parser.add_argument("--n_top_genes", type=int, default=4000)
+    parser.add_argument(
+        "--leiden_resolutions",
+        default="1.5 3.0",
+        help="Space-separated list of Leiden resolutions",
+    )
     parser.add_argument("--max_iter_harmony", type=int, default=100)
-    parser.add_argument("--cell_cycle_genes", default="config/cell_cycle_genes.json",
-                        help="Path to cell_cycle_genes.json")
+    parser.add_argument(
+        "--cell_cycle_genes",
+        default="config/cell_cycle_genes.json",
+        help="Path to cell_cycle_genes.json",
+    )
     args = parser.parse_args()
     main(args)

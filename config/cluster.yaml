@@ -8,7 +8,7 @@
 slurm_account: "p0020567"
 
 # SLURM partition (queue) to submit jobs to
-#slurm_partition: "YOUR_PARTITION"
+slurm_partition: "c23mm"
 
 # Path to your Conda/Miniconda installation root.
 # Leave empty ("") to auto-detect: tries $HOME/miniconda3, then $HOME/anaconda3.

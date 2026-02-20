@@ -8,7 +8,7 @@ default-resources:
   mem_mb:           50000   # 50 GB
   runtime:          1440    # 24 h (in minutes)
   cpus_per_task:    4
-  slurm_account:    ""      # Overridden from config/cluster.yaml via launch.sh
+  slurm_account:    "p0020567"      # Overridden from config/cluster.yaml via launch.sh
   slurm_partition:  ""      # Overridden from config/cluster.yaml via launch.sh
 
 # Snakemake behaviour

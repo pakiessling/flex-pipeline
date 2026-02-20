@@ -19,6 +19,7 @@ import logging
 import os
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -36,6 +37,7 @@ logger = logging.getLogger(__name__)
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _fig_to_b64(fig) -> str:
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches="tight", dpi=120)
@@ -49,14 +51,13 @@ def _img_tag(b64: str, alt: str = "", style: str = "max-width:100%;") -> str:
 
 
 def _df_to_html(df: pd.DataFrame, max_rows: int = 20) -> str:
-    return df.head(max_rows).to_html(
-        classes="table", border=0, index=True, escape=True
-    )
+    return df.head(max_rows).to_html(classes="table", border=0, index=True, escape=True)
 
 
 # ---------------------------------------------------------------------------
 # Plot generators
 # ---------------------------------------------------------------------------
+
 
 def _plot_umap_by(adata, color_col: str, title: str):
     if color_col not in adata.obs.columns and color_col not in adata.var_names:
@@ -67,8 +68,11 @@ def _plot_umap_by(adata, color_col: str, title: str):
 
 
 def _plot_qc_violin(adata):
-    metrics = [c for c in ["log1p_total_counts", "log1p_n_genes_by_counts", "pct_counts_MT"]
-               if c in adata.obs.columns]
+    metrics = [
+        c
+        for c in ["log1p_total_counts", "log1p_n_genes_by_counts", "pct_counts_MT"]
+        if c in adata.obs.columns
+    ]
     if not metrics:
         return None
     fig, axes = plt.subplots(1, len(metrics), figsize=(5 * len(metrics), 4))
@@ -83,6 +87,7 @@ def _plot_qc_violin(adata):
 # ---------------------------------------------------------------------------
 # Section builders
 # ---------------------------------------------------------------------------
+
 
 def _section_summary(adata) -> str:
     pipeline_log = adata.uns.get("pipeline_log", {})
@@ -145,7 +150,9 @@ def _section_integration(adata) -> str:
         if col in adata.obs.columns:
             fig = _plot_umap_by(adata, col, col.replace("_", " ").title())
             if fig:
-                imgs.append(_img_tag(_fig_to_b64(fig), col, style="width:48%; margin:1%;"))
+                imgs.append(
+                    _img_tag(_fig_to_b64(fig), col, style="width:48%; margin:1%;")
+                )
 
     imgs_html = "\n".join(imgs)
     return f"""
@@ -253,15 +260,16 @@ def _section_markers(adata) -> str:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def build_report(adata, cytetype_json_path: str, output_dir: str):
     logger.info("Building HTML report sections …")
 
     html_parts = {
-        "summary":     _section_summary(adata),
-        "qc":          _section_qc(adata),
+        "summary": _section_summary(adata),
+        "qc": _section_qc(adata),
         "integration": _section_integration(adata),
-        "cytetype":    _section_cytetype(cytetype_json_path),
-        "markers":     _section_markers(adata),
+        "cytetype": _section_cytetype(cytetype_json_path),
+        "markers": _section_markers(adata),
     }
 
     body = "\n".join(html_parts.values())
@@ -344,8 +352,14 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate HTML pipeline report.")
-    parser.add_argument("--input_file",   required=True, help="Final .h5ad path")
-    parser.add_argument("--output_dir",   required=True, help="Directory to write report.html")
-    parser.add_argument("--cytetype_json", default="", help="Path to cytetype_annotation.json (optional)")
+    parser.add_argument("--input_file", required=True, help="Final .h5ad path")
+    parser.add_argument(
+        "--output_dir", required=True, help="Directory to write report.html"
+    )
+    parser.add_argument(
+        "--cytetype_json",
+        default="",
+        help="Path to cytetype_annotation.json (optional)",
+    )
     args = parser.parse_args()
     main(args)
