@@ -9,22 +9,22 @@ channels:
   - bioconda
 dependencies:
   - python=3.11
-  - scanpy>=1.10
-  - anndata>=0.10
-  - harmonypy>=0.0.9
-  - pacmap>=0.7
-  - scipy
-  - numpy
-  - pandas
-  - matplotlib
-  - statsmodels
-  - leidenalg
-  - python-igraph
-  - scikit-image
+  - scanpy>=1.11,<1.12      # minor-locked: algorithm changes affect clustering/UMAP
+  - anndata>=0.12,<0.13     # minor-locked: format changes can break layer access
+  - harmonypy>=0.2,<0.3     # minor-locked: integration algorithm
+  - pacmap>=0.8,<1          # minor-locked: dimensionality reduction algorithm
+  - leidenalg>=0.11,<1      # minor-locked: clustering algorithm
+  - python-igraph>=1.0,<2   # major-locked
+  - scipy>=1.16,<2          # major-locked
+  - numpy>=2,<3             # major-locked
+  - pandas>=2,<3            # major-locked
+  - matplotlib>=3.10,<4     # major-locked
+  - statsmodels<1           # major-locked
+  - scikit-image<1          # major-locked
   - setuptools
   - pip
   - pip:
     # Fast Wilcoxon rank-sum DE: https://github.com/remydubois/illico
-    - illico
+    - illico==0.2.0
     # LLM-based cluster annotation: https://github.com/NygenAnalytics/CyteType
-    - cytetype
+    - cytetype==0.12.0
