@@ -30,7 +30,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def illico_to_rank_genes_groups(de_df: pd.DataFrame, group_col: str, n_top: int) -> dict:
+def illico_to_rank_genes_groups(
+    de_df: pd.DataFrame, group_col: str, n_top: int
+) -> dict:
     """
     Convert the flat illico output DataFrame to scanpy's rank_genes_groups
     structured-recarray format so that CyteType and sc.pl.rank_genes_groups
@@ -39,15 +41,15 @@ def illico_to_rank_genes_groups(de_df: pd.DataFrame, group_col: str, n_top: int)
     Expected illico columns: <group_col>, gene, p_value, statistic, fold_change
     """
     groups = sorted(de_df[group_col].astype(str).unique())
-    gene_dtype    = [(g, "U200")      for g in groups]
-    float32_dtype = [(g, np.float32)  for g in groups]
-    float64_dtype = [(g, np.float64)  for g in groups]
+    gene_dtype = [(g, "U200") for g in groups]
+    float32_dtype = [(g, np.float32) for g in groups]
+    float64_dtype = [(g, np.float64) for g in groups]
 
-    names_arr    = np.empty(n_top, dtype=gene_dtype)
-    scores_arr   = np.zeros(n_top, dtype=float32_dtype)
-    pvals_arr    = np.ones(n_top,  dtype=float64_dtype)
+    names_arr = np.empty(n_top, dtype=gene_dtype)
+    scores_arr = np.zeros(n_top, dtype=float32_dtype)
+    pvals_arr = np.ones(n_top, dtype=float64_dtype)
     pvals_adj_arr = np.ones(n_top, dtype=float64_dtype)
-    logfcs_arr   = np.zeros(n_top, dtype=float32_dtype)
+    logfcs_arr = np.zeros(n_top, dtype=float32_dtype)
 
     for g in groups:
         grp = de_df[de_df[group_col].astype(str) == g].copy()
@@ -59,27 +61,27 @@ def illico_to_rank_genes_groups(de_df: pd.DataFrame, group_col: str, n_top: int)
         # FDR correction within group
         _, padj, _, _ = multipletests(grp["p_value"].values, method="fdr_bh")
 
-        names_arr[g][:n]     = grp["gene"].values[:n]
-        scores_arr[g][:n]    = grp["statistic"].values[:n].astype(np.float32)
-        pvals_arr[g][:n]     = grp["p_value"].values[:n]
+        names_arr[g][:n] = grp["gene"].values[:n]
+        scores_arr[g][:n] = grp["statistic"].values[:n].astype(np.float32)
+        pvals_arr[g][:n] = grp["p_value"].values[:n]
         pvals_adj_arr[g][:n] = padj[:n]
-        logfcs_arr[g][:n]    = np.log2(
+        logfcs_arr[g][:n] = np.log2(
             np.maximum(grp["fold_change"].values[:n], 1e-10)
         ).astype(np.float32)
 
     return {
         "params": {
-            "groupby":    group_col,
-            "reference":  "rest",
-            "method":     "wilcoxon",
-            "use_raw":    False,
-            "layer":      None,
+            "groupby": group_col,
+            "reference": "rest",
+            "method": "wilcoxon",
+            "use_raw": False,
+            "layer": None,
             "corr_method": "benjamini-hochberg",
         },
-        "names":         names_arr,
-        "scores":        scores_arr,
-        "pvals":         pvals_arr,
-        "pvals_adj":     pvals_adj_arr,
+        "names": names_arr,
+        "scores": scores_arr,
+        "pvals": pvals_arr,
+        "pvals_adj": pvals_adj_arr,
         "logfoldchanges": logfcs_arr,
     }
 
@@ -123,7 +125,9 @@ def main(args):
     de_df = de_df.rename(columns={"pert": args.group_key, "feature": "gene"})
     group_col = args.group_key
 
-    logger.info(f"  illico returned {len(de_df)} rows for {de_df[group_col].nunique()} groups")
+    logger.info(
+        f"  illico returned {len(de_df)} rows for {de_df[group_col].nunique()} groups"
+    )
 
     # Save full DE results
     os.makedirs(args.markers_dir, exist_ok=True)
@@ -150,6 +154,7 @@ def main(args):
 
     # Reproducibility log
     import anndata as ad
+
     adata.uns.setdefault("pipeline_log", {})["markers"] = {
         "completed_at": datetime.datetime.now().isoformat(),
         "tool": "illico",
@@ -170,12 +175,22 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Marker gene analysis via illico.")
-    parser.add_argument("--input_file",  required=True, help="Input .h5ad path")
+    parser.add_argument("--input_file", required=True, help="Input .h5ad path")
     parser.add_argument("--output_file", required=True, help="Output .h5ad path")
-    parser.add_argument("--markers_dir", required=True, help="Directory for marker CSV files")
-    parser.add_argument("--group_key",   default="leiden_3", help="Obs column with cluster labels")
-    parser.add_argument("--n_top",       type=int, default=100, help="Top N markers to report per cluster")
-    parser.add_argument("--is_log1p",    action="store_true", default=True,
-                        help="Whether expression matrix is already log1p-transformed")
+    parser.add_argument(
+        "--markers_dir", required=True, help="Directory for marker CSV files"
+    )
+    parser.add_argument(
+        "--group_key", default="leiden_3_0", help="Obs column with cluster labels"
+    )
+    parser.add_argument(
+        "--n_top", type=int, default=100, help="Top N markers to report per cluster"
+    )
+    parser.add_argument(
+        "--is_log1p",
+        action="store_true",
+        default=True,
+        help="Whether expression matrix is already log1p-transformed",
+    )
     args = parser.parse_args()
     main(args)

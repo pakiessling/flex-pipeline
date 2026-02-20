@@ -125,6 +125,7 @@ def main(args):
 
     # Reproducibility log
     import anndata as ad
+
     adata.uns.setdefault("pipeline_log", {})["cytetype"] = {
         "completed_at": datetime.datetime.now().isoformat(),
         "group_key": args.group_key,
@@ -144,16 +145,35 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="LLM-based cluster annotation via CyteType.")
-    parser.add_argument("--input_file",    required=True, help="Input .h5ad (must have rank_genes_groups in .uns)")
-    parser.add_argument("--output_file",   required=True, help="Output .h5ad path")
-    parser.add_argument("--output_json",   required=True, help="Output JSON path for CyteType annotation")
-    parser.add_argument("--group_key",     default="leiden_3", help="Obs column with cluster labels")
-    parser.add_argument("--n_top_genes",   type=int, default=50, help="Top marker genes sent to LLM per cluster")
-    parser.add_argument("--study_context", default="Single-cell RNA-seq data from heart tissue.",
-                        help="Biological context description for the LLM")
+
+    parser = argparse.ArgumentParser(
+        description="LLM-based cluster annotation via CyteType."
+    )
+    parser.add_argument(
+        "--input_file",
+        required=True,
+        help="Input .h5ad (must have rank_genes_groups in .uns)",
+    )
+    parser.add_argument("--output_file", required=True, help="Output .h5ad path")
+    parser.add_argument(
+        "--output_json", required=True, help="Output JSON path for CyteType annotation"
+    )
+    parser.add_argument(
+        "--group_key", default="leiden_3", help="Obs column with cluster labels"
+    )
+    parser.add_argument(
+        "--n_top_genes",
+        type=int,
+        default=50,
+        help="Top marker genes sent to LLM per cluster",
+    )
+    parser.add_argument(
+        "--study_context",
+        default="Single-cell RNA-seq data from heart tissue.",
+        help="Biological context description for the LLM",
+    )
     parser.add_argument("--plot_dir",      default="",
-                        help="Directory to save UMAP plots (default: same dir as output_file)")
+        help="Directory to save UMAP plots (default: same dir as output_file)")
     args = parser.parse_args()
     if not args.plot_dir:
         args.plot_dir = os.path.dirname(args.output_file)

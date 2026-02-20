@@ -1,3 +1,4 @@
 .snakemake/*
 logs/*
 results/*
+query.json

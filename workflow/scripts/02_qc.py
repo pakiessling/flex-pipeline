@@ -13,6 +13,7 @@ import os
 import warnings
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -84,6 +85,7 @@ def calculate_qc(adata):
 
 def flag_outliers(adata, nmads: int):
     """Mark cells as low-quality based on MAD thresholds. Does NOT remove cells."""
+
     def is_outlier(metric, upper_only=False):
         M = adata.obs[metric]
         if upper_only:
@@ -109,7 +111,6 @@ def flag_outliers(adata, nmads: int):
     return adata
 
 
-
 def cluster_and_embed(adata, leiden_resolutions):
     sc.pp.highly_variable_genes(adata, flavor="seurat_v3", n_top_genes=4000)
     sc.pp.normalize_total(adata)
@@ -120,10 +121,7 @@ def cluster_and_embed(adata, leiden_resolutions):
     for res in leiden_resolutions:
         key = f"leiden_{str(res).replace('.', '_')}"
         sc.tl.leiden(adata, resolution=res, key_added=key)
-        logger.info(
-            f"  Leiden resolution={res}: "
-            f"{adata.obs[key].nunique()} clusters"
-        )
+        logger.info(f"  Leiden resolution={res}: {adata.obs[key].nunique()} clusters")
 
     # Rank genes before scaling (scaling can introduce negative values)
     try:
@@ -136,6 +134,7 @@ def cluster_and_embed(adata, leiden_resolutions):
     for res in leiden_resolutions:
         key = f"leiden_{str(res).replace('.', '_')}"
         rg_key = f"rank_genes_groups_{str(res).replace('.', '_')}"
+
         de_df = asymptotic_wilcoxon(adata, group_keys=key, reference=None, is_log1p=True)
         de_df = de_df.reset_index()
         de_df = de_df.rename(columns={"pert": key, "feature": "gene"})
@@ -182,7 +181,9 @@ def save_qc_plots(adata, sample: str, qc_folder: str, leiden_resolutions):
         rg_key = f"rank_genes_groups_{str(res).replace('.', '_')}"
         if rg_key in adata.uns:
             df = pd.DataFrame(adata.uns[rg_key]["names"]).head(100)
-            csv_path = os.path.join(sample_dir, f"{sample}_markers_{str(res).replace('.', '_')}.csv")
+            csv_path = os.path.join(
+                sample_dir, f"{sample}_markers_{str(res).replace('.', '_')}.csv"
+            )
             df.to_csv(csv_path)
             logger.info(f"  Marker genes saved → {csv_path}")
 
@@ -205,7 +206,9 @@ def main(args):
     logger.info(f"[{args.sample}] Calculating QC metrics …")
     adata = calculate_qc(adata)
 
-    logger.info(f"[{args.sample}] Flagging outlier cells (MAD threshold={args.mad_threshold}) …")
+    logger.info(
+        f"[{args.sample}] Flagging outlier cells (MAD threshold={args.mad_threshold}) …"
+    )
     adata = flag_outliers(adata, nmads=args.mad_threshold)
 
     logger.info(f"[{args.sample}] Clustering and embedding …")
@@ -216,8 +219,12 @@ def main(args):
 
     # Reproducibility log
     import anndata as ad
-    n_dbl = int((adata.obs["scDblFinder.class"] == "doublet").sum()) \
-        if "scDblFinder.class" in adata.obs else 0
+
+    n_dbl = (
+        int((adata.obs["scDblFinder.class"] == "doublet").sum())
+        if "scDblFinder.class" in adata.obs
+        else 0
+    )
     adata.uns.setdefault("pipeline_log", {})["qc"] = {
         "completed_at": datetime.datetime.now().isoformat(),
         "n_cells_input": int(n_start),
@@ -237,14 +244,28 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Per-sample QC for single-cell RNA-seq.")
-    parser.add_argument("--input",   required=True, help="Input .h5ad path")
-    parser.add_argument("--sample",  required=True, help="Sample identifier")
-    parser.add_argument("--output",  required=True, help="Output .h5ad path")
-    parser.add_argument("--qc_folder", required=True, help="Folder for QC plots and CSVs")
-    parser.add_argument("--min_genes", type=int, default=2, help="Minimum genes per cell")
-    parser.add_argument("--mad_threshold", type=int, default=5, help="MAD multiplier for outlier detection")
-    parser.add_argument("--leiden_resolutions", default="1.5 3.0",
-                        help="Space-separated Leiden clustering resolutions")
+    parser = argparse.ArgumentParser(
+        description="Per-sample QC for single-cell RNA-seq."
+    )
+    parser.add_argument("--input", required=True, help="Input .h5ad path")
+    parser.add_argument("--sample", required=True, help="Sample identifier")
+    parser.add_argument("--output", required=True, help="Output .h5ad path")
+    parser.add_argument(
+        "--qc_folder", required=True, help="Folder for QC plots and CSVs"
+    )
+    parser.add_argument(
+        "--min_genes", type=int, default=2, help="Minimum genes per cell"
+    )
+    parser.add_argument(
+        "--mad_threshold",
+        type=int,
+        default=5,
+        help="MAD multiplier for outlier detection",
+    )
+    parser.add_argument(
+        "--leiden_resolutions",
+        default="1.5 3.0",
+        help="Space-separated Leiden clustering resolutions",
+    )
     args = parser.parse_args()
     main(args)
