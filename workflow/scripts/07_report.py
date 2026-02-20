@@ -201,6 +201,7 @@ def _section_cytetype(cytetype_json_path: str) -> str:
         const raw = data.raw_annotations || {};
         let html = '';
         annotations.forEach(basic => {
+            // CyteType clusterId is 1-based; displayed as id-1 to match leiden_3 (0-based)
             const id = basic.clusterId;
             const details = raw[id]?.latest || {};
             const fullOut = details.annotation?.fullOutput || {};
@@ -213,7 +214,7 @@ def _section_cytetype(cytetype_json_path: str) -> str:
             if(conf === 'Low') confClass = 'badge-low';
             html += `<div class="cluster-card">
               <div class="card-header" onclick="this.classList.toggle('active');this.nextElementSibling.classList.toggle('show')">
-                <div><span class="id-badge">ID: ${id}</span><span style="font-weight:600">${basic.annotation}</span></div>
+                <div><span class="id-badge">ID: ${id - 1}</span><span style="font-weight:600">${basic.annotation}</span></div>
                 <span class="badge ${confClass}" style="margin-left:10px">Confidence: ${conf}</span>
               </div>
               <div class="card-body">
