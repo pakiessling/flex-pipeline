@@ -151,6 +151,10 @@ def main(args):
         show=False,
     )
 
+    qc_cols = [c for c in ["scDblFinder.class", "cell_quality"] if c in adata.obs.columns]
+    if qc_cols:
+        sc.pl.umap(adata[ri, :], color=qc_cols, save="_qc.png", show=False)
+
     # Reproducibility log
     import anndata as ad
 

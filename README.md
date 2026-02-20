@@ -14,13 +14,30 @@ A modular Snakemake pipeline for processing 10X Genomics FLEX single-cell RNA-se
 
 ### 1. Fill in your samples
 
-Edit `samples.csv` (one row per sample):
+Edit `samples.csv` (one row per sample). Two input modes are supported and can be mixed in the same run:
 
+**CellRanger matrices** (runs SoupX + scDblFinder in step 1):
 ```csv
 sample_id,raw_matrix_path,filtered_matrix_path
 sample_A,/path/to/sampleA/raw_feature_bc_matrix.h5,/path/to/sampleA/filtered_feature_bc_matrix.h5
 sample_B,/path/to/sampleB/raw_feature_bc_matrix.h5,/path/to/sampleB/filtered_feature_bc_matrix.h5
 ```
+
+**Pre-processed h5ad files** (bypasses step 1, feeds directly into QC):
+```csv
+sample_id,h5ad_path
+sample_A,/path/to/sampleA.h5ad
+sample_B,/path/to/sampleB.h5ad
+```
+
+**Mixed** (both modes in one run):
+```csv
+sample_id,raw_matrix_path,filtered_matrix_path,h5ad_path
+sample_A,/raw/A.h5,/filt/A.h5,
+sample_B,,,/path/to/B.h5ad
+```
+
+When using pre-processed h5ad input, `scDblFinder.score`/`scDblFinder.class` annotations are optional — downstream steps handle their absence gracefully.
 
 ### 2. Configure the pipeline
 
@@ -62,9 +79,10 @@ All steps can be toggled on/off in `config/config.yaml` under `steps:`.
 ### Data flow
 
 ```
-samples.csv + CellRanger H5 matrices
-  → [01_soupx_doublets]  results/intermediate/{sample}_cleaned.h5ad
-                          (obs: scDblFinder.score, scDblFinder.class)
+samples.csv
+  ├─ CellRanger rows → [01_soupx_doublets]  results/intermediate/{sample}_cleaned.h5ad
+  │                     (obs: scDblFinder.score, scDblFinder.class)
+  └─ h5ad rows ──────→ copied directly  ──→ results/intermediate/{sample}_cleaned.h5ad
   → [02_qc]              results/per_sample/{sample}_clean.h5ad
                           (obs: cell_quality, leiden_*)
   → [03_integration]     results/integration/integrated.h5ad

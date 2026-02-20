@@ -36,6 +36,7 @@ parser <- add_argument(
   default = "cell_type"
 )
 parser <- add_argument(parser, "--output", help = "Output .h5ad path")
+parser <- add_argument(parser, "--plot_dir", help = "Directory to save UMAP plots (default: same dir as output)", default = "")
 args <- parse_args(parser)
 
 cat("Loading query:", args$query, "\n")
@@ -103,3 +104,66 @@ query_py$uns[["pipeline_log"]][["label_transfer"]] <- list(
 dir.create(dirname(args$output), showWarnings = FALSE, recursive = TRUE)
 write_h5ad(query_py, args$output)
 cat("Saved →", args$output, "\n")
+
+# --- UMAP plots ------------------------------------------------------------
+plot_dir <- if (nchar(trimws(args$plot_dir)) == 0) dirname(args$output) else args$plot_dir
+dir.create(plot_dir, showWarnings = FALSE, recursive = TRUE)
+
+tryCatch({
+  umap_mat <- query_py$obsm[["X_umap"]]
+  if (is.null(umap_mat) || ncol(umap_mat) < 2) {
+    cat("No UMAP coordinates found; skipping UMAP plots.\n")
+  } else {
+    suppressPackageStartupMessages(library(ggplot2))
+
+    df_plot <- data.frame(
+      UMAP1                = umap_mat[, 1],
+      UMAP2                = umap_mat[, 2],
+      singler_label        = query_py$obs[["singler_label"]],
+      singler_pruned_label = query_py$obs[["singler_pruned_label"]],
+      singler_score_delta  = query_py$obs[["singler_score_delta"]]
+    )
+
+    base_theme <- theme_bw(base_size = 11) + theme(
+      legend.text  = element_text(size = 7),
+      legend.title = element_text(size = 8),
+      plot.title   = element_text(face = "bold")
+    )
+
+    # singler_label
+    p_label <- ggplot(df_plot, aes(x = UMAP1, y = UMAP2, color = singler_label)) +
+      geom_point(size = 0.3, alpha = 0.5) +
+      base_theme +
+      ggtitle("SingleR Label") +
+      guides(color = guide_legend(
+        title = "Label", override.aes = list(size = 2), ncol = 2
+      ))
+    ggsave(file.path(plot_dir, "singler_label_umap.png"), p_label,
+           width = 11, height = 7, dpi = 120)
+    cat("Saved plot → singler_label_umap.png\n")
+
+    # singler_pruned_label (NAs shown as grey — cells with low confidence)
+    p_pruned <- ggplot(df_plot, aes(x = UMAP1, y = UMAP2, color = singler_pruned_label)) +
+      geom_point(size = 0.3, alpha = 0.5) +
+      base_theme +
+      ggtitle("SingleR Pruned Label (grey = low confidence)") +
+      guides(color = guide_legend(
+        title = "Label", override.aes = list(size = 2), ncol = 2
+      ))
+    ggsave(file.path(plot_dir, "singler_pruned_label_umap.png"), p_pruned,
+           width = 11, height = 7, dpi = 120)
+    cat("Saved plot → singler_pruned_label_umap.png\n")
+
+    # singler_score_delta (continuous — higher = more confident)
+    p_delta <- ggplot(df_plot, aes(x = UMAP1, y = UMAP2, color = singler_score_delta)) +
+      geom_point(size = 0.3, alpha = 0.5) +
+      scale_color_viridis_c(name = "delta score") +
+      base_theme +
+      ggtitle("SingleR Score Delta (higher = more confident)")
+    ggsave(file.path(plot_dir, "singler_score_delta_umap.png"), p_delta,
+           width = 9, height = 7, dpi = 120)
+    cat("Saved plot → singler_score_delta_umap.png\n")
+  }
+}, error = function(e) {
+  cat("Warning: UMAP plot generation failed:", conditionMessage(e), "\n")
+})

@@ -25,6 +25,48 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _plot_cytetype_umaps(adata, results: dict, group_key: str, plot_dir: str):
+    """Save UMAP PNGs coloured by CyteType annotations."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    if "X_umap" not in adata.obsm:
+        logger.warning("No UMAP coordinates found; skipping CyteType UMAP plots.")
+        return
+
+    os.makedirs(plot_dir, exist_ok=True)
+
+    # Detect any obs columns the library added (e.g. cytetype_label)
+    cytetype_cols = [c for c in adata.obs.columns if c.startswith("cytetype_")]
+
+    # If no obs columns, build a mapping from the JSON and add it
+    if not cytetype_cols and group_key in adata.obs.columns:
+        annotations = results.get("annotations", [])
+        if annotations:
+            cluster_to_label = {str(a["clusterId"]): a["annotation"] for a in annotations}
+            adata.obs["cytetype_label"] = (
+                adata.obs[group_key].astype(str).map(cluster_to_label)
+            )
+            cytetype_cols = ["cytetype_label"]
+            logger.info("Mapped CyteType cluster annotations to adata.obs['cytetype_label']")
+
+    if not cytetype_cols:
+        logger.warning("No CyteType annotation columns found; skipping UMAP plots.")
+        return
+
+    for col in cytetype_cols:
+        fig, ax = plt.subplots(figsize=(11, 7))
+        sc.pl.umap(
+            adata, color=col, ax=ax, show=False,
+            title=col.replace("_", " ").title(),
+        )
+        out_png = os.path.join(plot_dir, f"{col}_umap.png")
+        fig.savefig(out_png, bbox_inches="tight", dpi=120)
+        plt.close(fig)
+        logger.info(f"UMAP plot saved → {out_png}")
+
+
 def main(args):
     if not os.path.exists(args.input_file):
         raise FileNotFoundError(f"Input not found: {args.input_file}")
@@ -99,8 +141,11 @@ def main(args):
     adata.write_h5ad(args.output_file)
     logger.info(f"Annotated h5ad saved → {args.output_file}")
 
+    _plot_cytetype_umaps(adata, results, args.group_key, args.plot_dir)
+
 
 if __name__ == "__main__":
+
     parser = argparse.ArgumentParser(
         description="LLM-based cluster annotation via CyteType."
     )
@@ -127,5 +172,9 @@ if __name__ == "__main__":
         default="Single-cell RNA-seq data from heart tissue.",
         help="Biological context description for the LLM",
     )
+    parser.add_argument("--plot_dir",      default="",
+        help="Directory to save UMAP plots (default: same dir as output_file)")
     args = parser.parse_args()
+    if not args.plot_dir:
+        args.plot_dir = os.path.dirname(args.output_file)
     main(args)
