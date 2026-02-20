@@ -62,14 +62,6 @@ done
 # ---------------------------------------------------------------------------
 # Build snakemake command
 # ---------------------------------------------------------------------------
-EXTRA_ARGS=""
-if [ -n "$ACCOUNT" ]; then
-    EXTRA_ARGS="$EXTRA_ARGS --default-resources slurm_account=$ACCOUNT"
-fi
-if [ -n "$PARTITION" ]; then
-    EXTRA_ARGS="$EXTRA_ARGS --default-resources slurm_partition=$PARTITION"
-fi
-
 if [ -n "$LOCAL" ]; then
     CMD="snakemake \
         --snakefile workflow/Snakefile \
@@ -79,15 +71,35 @@ if [ -n "$LOCAL" ]; then
         --cores 4 \
         $DRY_RUN"
 else
+    # Generate a runtime profile that merges profiles/config.yaml with the
+    # cluster-specific account and partition from config/cluster.yaml.
+    # This avoids the snakemake profile vs CLI --default-resources conflict,
+    # where the profile's default-resources block silently wins over CLI flags.
+    RUNTIME_PROFILE_DIR="$SCRIPT_DIR/.runtime_profile"
+    mkdir -p "$RUNTIME_PROFILE_DIR"
+    python3 -c "
+import yaml
+with open('$SCRIPT_DIR/profiles/config.yaml') as f:
+    profile = yaml.safe_load(f)
+dr = profile.setdefault('default-resources', {})
+dr['slurm_account'] = '$ACCOUNT'
+dr['slurm_partition'] = '$PARTITION'
+with open('$RUNTIME_PROFILE_DIR/config.yaml', 'w') as f:
+    yaml.dump(profile, f, default_flow_style=False)
+"
+    echo "Runtime profile written to $RUNTIME_PROFILE_DIR/config.yaml"
+    echo "  slurm_account:   $ACCOUNT"
+    echo "  slurm_partition: $PARTITION"
+    echo ""
+
     CMD="snakemake \
         --snakefile workflow/Snakefile \
         --configfile config/config.yaml \
         --executor slurm \
         --conda-frontend conda \
-        --profile profiles \
+        --profile $RUNTIME_PROFILE_DIR \
         --jobscript jobscript.sh \
         --rerun-incomplete \
-        $EXTRA_ARGS \
         $DRY_RUN"
 fi
 

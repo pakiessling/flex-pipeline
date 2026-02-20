@@ -2,3 +2,4 @@
 logs/*
 results/*
 query.json
+.runtime_profile/
