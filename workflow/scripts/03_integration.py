@@ -71,9 +71,21 @@ def main(args):
     total_before = sum(a.n_obs for a in adatas)
     logger.info(f"Loaded {len(adatas)} samples, {total_before} total cells")
 
+    # Harvest per-step software versions from the first sample before concat
+    # drops them (sc.concat merge="same" discards uns keys that differ across samples).
+    _r_step_logs = {}
+    for _step in ("soupx", "scdblfinder"):
+        _entry = adatas[0].uns.get("pipeline_log", {}).get(_step)
+        if _entry and "software" in _entry:
+            _r_step_logs[_step] = {"software": _entry["software"]}
+
     adata = sc.concat(adatas, join="outer", merge="same")
     del adatas
     logger.info(f"Merged: {adata.n_obs} cells")
+
+    # Re-attach R software version stubs so they survive into the final h5ad.
+    for _step, _info in _r_step_logs.items():
+        adata.uns.setdefault("pipeline_log", {}).setdefault(_step, {}).update(_info)
 
     if "scDblFinder.class" in adata.obs.columns:
         n_dbl = (adata.obs["scDblFinder.class"] == "doublet").sum()

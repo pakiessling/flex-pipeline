@@ -98,7 +98,11 @@ query_py$uns[["pipeline_log"]][["label_transfer"]] <- list(
   reference_path = args$reference,
   label_column = args$label_column,
   n_reference = nrow(ref_ad),
-  completed_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S")
+  completed_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S"),
+  software = list(
+    SingleR = as.character(packageVersion("SingleR")),
+    anndataR = as.character(packageVersion("anndataR"))
+  )
 )
 
 dir.create(dirname(args$output), showWarnings = FALSE, recursive = TRUE)
