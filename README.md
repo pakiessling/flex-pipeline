@@ -10,6 +10,10 @@ A modular Snakemake pipeline for processing 10X Genomics FLEX single-cell RNA-se
 | Conda / Miniconda | For environment management |
 | SLURM | For HPC job submission |
 
+Install Snakemake and snakemake-executor-plugin-slurm in your PATH:
+```bash
+conda install -n base snakemake snakemake-executor-plugin-slurm
+```
 ## Quick Start
 
 ### 1. Fill in your samples
@@ -104,6 +108,14 @@ Doublet detection is performed by [scDblFinder](https://bioconductor.org/package
 | `scDblFinder.class` | string | `"singlet"` or `"doublet"` |
 
 Doublets are **never hard-filtered** — they are carried as annotations so downstream analyses can choose how to handle them.
+
+### Ambient RNA correction
+
+Ambient RNA is corrected with [SoupX](github.com/constantAmateur/SoupX) 
+
+This is only possible when unfiltered and filtered output of Cellranger is available.
+
+The original counts are preserved in the object. 
 
 ---
 
