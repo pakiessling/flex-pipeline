@@ -167,5 +167,5 @@ params:
 ```
 
 ### CyteType annotation
-Set `steps.cytetype: true`. CyteType requires an API key (see [CyteType docs](https://github.com/NygenAnalytics/CyteType)).
-The markers step must also be enabled (`steps.markers: true`).
+Set `steps.cytetype: true`. The markers step must also be enabled (`steps.markers: true`).
+(Also see [CyteType docs](https://github.com/NygenAnalytics/CyteType)).
