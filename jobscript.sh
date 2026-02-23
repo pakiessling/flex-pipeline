@@ -35,6 +35,19 @@ if [ -z "$CONDA_ROOT" ]; then
     exit 1
 fi
 
+# Wait for CONDA_ROOT to be accessible (handles slow NFS/GPFS mounts on compute nodes)
+_wait_for_conda_root() {
+    local retries=30 delay=10
+    for i in $(seq 1 $retries); do
+        [ -d "$CONDA_ROOT/bin" ] && return 0
+        echo "Waiting for $CONDA_ROOT to be accessible (attempt $i/$retries)..." >&2
+        sleep $delay
+    done
+    echo "ERROR: $CONDA_ROOT not accessible after $((retries * delay))s" >&2
+    return 1
+}
+_wait_for_conda_root
+
 # shellcheck disable=SC1091
 . "$CONDA_ROOT/etc/profile.d/conda.sh"
 export PATH="$CONDA_ROOT/bin:$PATH"
