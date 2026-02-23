@@ -19,6 +19,7 @@ dependencies:
   - numpy>=2,<3             # major-locked
   - pandas>=2,<3            # major-locked
   - matplotlib>=3.10,<4     # major-locked
+  - adjusttext>=1,<2        # UMAP label repulsion
   - statsmodels<1           # major-locked
   - scikit-image<1          # major-locked
   - setuptools

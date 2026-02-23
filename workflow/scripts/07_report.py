@@ -63,8 +63,8 @@ def _plot_umap_by(adata, color_col: str, title: str):
     if color_col not in adata.obs.columns and color_col not in adata.var_names:
         return None
 
-    # Use on-data labels for categorical columns with many categories so the
-    # legend doesn't dominate the figure.
+    # Use repelled on-data labels for categorical columns with many categories
+    # so the legend doesn't dominate the figure.
     label_on_data = False
     if color_col in adata.obs.columns:
         try:
@@ -79,10 +79,45 @@ def _plot_umap_by(adata, color_col: str, title: str):
         ax=ax,
         show=False,
         title=title,
-        legend_loc="on data" if label_on_data else "right margin",
+        legend_loc="none" if label_on_data else "right margin",
         legend_fontsize=7,
-        legend_fontoutline=2,
     )
+
+    if label_on_data and "X_umap" in adata.obsm:
+        try:
+            from adjustText import adjust_text
+
+            umap_xy = adata.obsm["X_umap"]
+            cats = adata.obs[color_col].astype(str)
+            texts, xs, ys = [], [], []
+            for cat in sorted(cats.unique()):
+                mask = (cats == cat).values
+                cx = float(umap_xy[mask, 0].mean())
+                cy = float(umap_xy[mask, 1].mean())
+                xs.append(cx)
+                ys.append(cy)
+                texts.append(
+                    ax.text(
+                        cx, cy, cat,
+                        fontsize=7, fontweight="bold",
+                        ha="center", va="center",
+                        bbox=dict(boxstyle="round,pad=0.15", fc="white", alpha=0.6, lw=0),
+                    )
+                )
+            adjust_text(
+                texts,
+                x=xs, y=ys,
+                ax=ax,
+                expand=(1.4, 1.4),
+                arrowprops=dict(arrowstyle="-", color="#555555", lw=0.7),
+            )
+        except ImportError:
+            # adjustText not installed — fall back to plain on-data labels
+            sc.pl.umap(
+                adata, color=color_col, ax=ax, show=False, title=title,
+                legend_loc="on data", legend_fontsize=7, legend_fontoutline=2,
+            )
+
     return fig
 
 
