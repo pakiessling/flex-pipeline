@@ -34,7 +34,8 @@ params:
 
   # --- Integration (03_integration.py) ---
   n_top_genes: 4000             # Number of highly variable genes
-  leiden_resolutions: [1.5, 3.0]  # Leiden clustering resolutions
+  leiden_resolutions: [1.5, 3.0]  # Leiden clustering resolutions to compute
+  leiden_primary_resolution: 3.0  # Resolution used for markers, CyteType, and report (must be in leiden_resolutions)
   max_iter_harmony: 100         # Maximum Harmony iterations
 
   # --- Label transfer / SingleR (04_singleR.R) ---
@@ -44,12 +45,10 @@ params:
   reference_label_column: "cell_subtype"  # Column in reference .obs to use as labels
 
   # --- Marker genes / illico (06_markers.py) ---
-  markers_group_key: "leiden_3_0"  # Obs column to group cells by
   markers_n_top: 100             # Top N marker genes to report per cluster
   markers_is_log1p: true         # Whether the expression matrix is already log1p-transformed
 
   # --- CyteType (05_cytetype.py) ---
-  cytetype_group_key: "leiden_3_0"
   cytetype_n_top_genes: 50
   # Biological context given to the LLM. Be specific about tissue, disease, platform.
   cytetype_study_context: >

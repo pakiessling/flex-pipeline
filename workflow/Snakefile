@@ -364,7 +364,8 @@ if RUN_LABEL_TRANSFER:
 # ===========================================================================
 # Step 6 — Marker genes (illico)
 # ===========================================================================
-_GROUP_KEY = PARAMS.get("markers_group_key", "leiden_3")
+_PRIMARY_RES = float(PARAMS.get("leiden_primary_resolution", PARAMS.get("leiden_resolutions", [3.0])[-1]))
+_GROUP_KEY = f"leiden_{str(_PRIMARY_RES).replace('.', '_')}"
 _MARKERS_CSV = f"{OUT_MRK}/marker_genes_{_GROUP_KEY}.csv"
 
 rule run_markers:
@@ -412,7 +413,7 @@ if RUN_CYTETYPE:
         log:
             f"logs/cytetype/cytetype.log",
         params:
-            group_key=PARAMS.get("cytetype_group_key", "leiden_3"),
+            group_key=_GROUP_KEY,
             n_top_genes=PARAMS.get("cytetype_n_top_genes", 50),
             plot_dir=OUT_ANN,
             study_context=PARAMS.get(
@@ -454,6 +455,7 @@ rule run_report:
         f"logs/report/report.log",
     params:
         output_dir=OUT_REP,
+        group_key=_GROUP_KEY,
         cytetype_json_arg=(
             f"--cytetype_json {OUT_ANN}/cytetype_annotation.json"
             if RUN_CYTETYPE
@@ -470,6 +472,7 @@ rule run_report:
         python workflow/scripts/07_report.py \
             --input_file {input.h5ad} \
             --output_dir {params.output_dir} \
+            --group_key {params.group_key} \
             {params.cytetype_json_arg} \
             > {log} 2>&1
         """

@@ -211,11 +211,11 @@ def _section_qc(adata) -> str:
     """
 
 
-def _section_integration(adata) -> str:
+def _section_integration(adata, group_key: str = "leiden_3_0") -> str:
     imgs = []
     for col in [
         "Sample",
-        "leiden_3_0",
+        group_key,
         "singler_label",
         "cytetype_annotation_clusters",
         "cytetype_label",
@@ -258,7 +258,7 @@ def _section_cytetype(cytetype_json_path: str) -> str:
         const raw = data.raw_annotations || {};
         let html = '';
         annotations.forEach(basic => {
-            // CyteType clusterId is 1-based; displayed as id-1 to match leiden_3 (0-based)
+            // CyteType clusterId is 1-based; displayed as id-1 to match primary leiden column (0-based)
             const id = basic.clusterId;
             const details = raw[id]?.latest || {};
             const fullOut = details.annotation?.fullOutput || {};
@@ -338,13 +338,13 @@ def _section_markers(adata) -> str:
 # ---------------------------------------------------------------------------
 
 
-def build_report(adata, cytetype_json_path: str, output_dir: str):
+def build_report(adata, cytetype_json_path: str, output_dir: str, group_key: str = "leiden_3_0"):
     logger.info("Building HTML report sections …")
 
     html_parts = {
         "summary": _section_summary(adata),
         "qc": _section_qc(adata),
-        "integration": _section_integration(adata),
+        "integration": _section_integration(adata, group_key=group_key),
         "cytetype": _section_cytetype(cytetype_json_path),
         "markers": _section_markers(adata),
     }
@@ -424,7 +424,7 @@ def main(args):
     adata = sc.read_h5ad(args.input_file)
     logger.info(f"  {adata.n_obs} cells × {adata.n_vars} genes")
 
-    build_report(adata, args.cytetype_json, args.output_dir)
+    build_report(adata, args.cytetype_json, args.output_dir, group_key=args.group_key)
 
 
 if __name__ == "__main__":
@@ -437,6 +437,11 @@ if __name__ == "__main__":
         "--cytetype_json",
         default="",
         help="Path to cytetype_annotation.json (optional)",
+    )
+    parser.add_argument(
+        "--group_key",
+        default="leiden_3_0",
+        help="Obs column with primary cluster labels (e.g. leiden_3_0)",
     )
     args = parser.parse_args()
     main(args)
