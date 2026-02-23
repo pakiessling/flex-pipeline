@@ -98,15 +98,22 @@ def _plot_umap_by(adata, color_col: str, title: str):
                 ys.append(cy)
                 texts.append(
                     ax.text(
-                        cx, cy, cat,
-                        fontsize=7, fontweight="bold",
-                        ha="center", va="center",
-                        bbox=dict(boxstyle="round,pad=0.15", fc="white", alpha=0.6, lw=0),
+                        cx,
+                        cy,
+                        cat,
+                        fontsize=7,
+                        fontweight="bold",
+                        ha="center",
+                        va="center",
+                        bbox=dict(
+                            boxstyle="round,pad=0.15", fc="white", alpha=0.6, lw=0
+                        ),
                     )
                 )
             adjust_text(
                 texts,
-                x=xs, y=ys,
+                x=xs,
+                y=ys,
                 ax=ax,
                 expand=(1.4, 1.4),
                 arrowprops=dict(arrowstyle="-", color="#555555", lw=0.7),
@@ -114,8 +121,14 @@ def _plot_umap_by(adata, color_col: str, title: str):
         except ImportError:
             # adjustText not installed — fall back to plain on-data labels
             sc.pl.umap(
-                adata, color=color_col, ax=ax, show=False, title=title,
-                legend_loc="on data", legend_fontsize=7, legend_fontoutline=2,
+                adata,
+                color=color_col,
+                ax=ax,
+                show=False,
+                title=title,
+                legend_loc="on data",
+                legend_fontsize=7,
+                legend_fontoutline=2,
             )
 
     return fig
@@ -200,7 +213,16 @@ def _section_qc(adata) -> str:
 
 def _section_integration(adata) -> str:
     imgs = []
-    for col in ["Sample", "leiden_3", "singler_label", "cytetype_annotation_clusters", "cytetype_label", "phase", "scDblFinder.class", "cell_quality"]:
+    for col in [
+        "Sample",
+        "leiden_3_0",
+        "singler_label",
+        "cytetype_annotation_clusters",
+        "cytetype_label",
+        "phase",
+        "scDblFinder.class",
+        "cell_quality",
+    ]:
         if col in adata.obs.columns:
             fig = _plot_umap_by(adata, col, col.replace("_", " ").title())
             if fig:

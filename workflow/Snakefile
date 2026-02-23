@@ -171,7 +171,7 @@ if H5AD_SAMPLES:
             mem_mb=500,
             runtime=30,
             cpus_per_task=1,
-            shell:
+        shell:
             "cp {input.h5ad} {output.h5ad} 2>{log}"
 
 

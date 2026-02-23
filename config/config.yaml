@@ -18,7 +18,7 @@ steps:
   integration: true     # Multi-sample merge, Harmony batch correction, UMAP/PaCMAP
   label_transfer: true # SingleR label transfer from a reference dataset (set reference_h5ad below)
   markers: true         # Differential expression / marker genes via illico
-  cytetype: true       # CyteType LLM cluster annotation (requires markers step)
+  cytetype: false       # CyteType LLM cluster annotation (requires markers step)
   report: true          # Generate summary HTML report
 
 # =============================================================================
