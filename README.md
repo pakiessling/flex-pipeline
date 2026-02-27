@@ -14,6 +14,10 @@ Install Snakemake and snakemake-executor-plugin-slurm in your PATH:
 ```bash
 conda install -n base snakemake snakemake-executor-plugin-slurm
 ```
+Make a copy of this pipeline:
+```bash
+git clone https://github.com/pakiessling/flex-pipeline
+```
 ## Quick Start
 
 ### 1. Fill in your samples
