@@ -22,6 +22,7 @@ dependencies:
   - adjusttext>=1,<2        # UMAP label repulsion
   - statsmodels<1           # major-locked
   - scikit-image<1          # major-locked
+  - scikit-misc
   - setuptools
   - pip
   - pip:
