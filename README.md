@@ -269,3 +269,14 @@ layer name, or `X` (the default) when that is where the reference stores it.
 The script validates values and gene/cell names and aligns predictions by cell
 name. It never renames an arbitrary first assay to `logcounts`. This also avoids
 the obsolete anndataR `to=` conversion argument.
+
+### Optional integration diagnostics
+
+The required `results/integration/integrated.h5ad` contains PCA/Harmony,
+neighbors, Leiden clusters, and UMAP. PaCMAP and standalone integration PNGs
+run in an independent job when `steps.integration_diagnostics: true` (default:
+false). That job writes `results/integration/diagnostics/integrated_diagnostics.h5ad`,
+a separate copy with PaCMAP coordinates when feasible. Marker analysis, SingleR,
+and reporting depend on the core object, so a diagnostic failure cannot delete
+it or block their dependencies. The report still generates its own UMAP figures.
+Unexpected diagnostic errors remain visible as job failures.

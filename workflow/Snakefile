@@ -63,6 +63,7 @@ CELLRANGER_SAMPLES = samples_df.loc[~_h5ad_mask, "sample_id"].tolist()
 # ---------------------------------------------------------------------------
 STEPS = config.get("steps", {})
 RUN_SOUPX          = STEPS.get("soupx",          True)
+RUN_INTEGRATION_DIAGNOSTICS = STEPS.get("integration_diagnostics", False)
 RUN_QC_DIAGNOSTICS = STEPS.get("qc_diagnostics", False)
 RUN_QC             = STEPS.get("qc",             True)
 RUN_INTEGRATION    = STEPS.get("integration",    True)
@@ -122,6 +123,8 @@ def _report_input_h5ad():
 # ---------------------------------------------------------------------------
 def _final_targets():
     targets = []
+    if RUN_INTEGRATION_DIAGNOSTICS and RUN_INTEGRATION:
+        targets.append(f"{OUT_INT}/diagnostics/integrated_diagnostics.h5ad")
     if RUN_QC_DIAGNOSTICS:
         targets += expand(f"{OUT_QC}/{{sample}}/{{sample}}_diagnostics.h5ad", sample=SAMPLES)
     if RUN_REPORT:
@@ -371,6 +374,30 @@ rule run_integration:
             --max_iter_harmony {params.max_iter_harmony} \
             --cell_cycle_genes {params.cell_cycle_genes} \
             > {log} 2>&1
+        """
+
+
+rule run_integration_diagnostics:
+    input:
+        h5ad=f"{OUT_INT}/integrated.h5ad",
+        script="workflow/scripts/03_integration_diagnostics.py",
+    output:
+        h5ad=f"{OUT_INT}/diagnostics/integrated_diagnostics.h5ad",
+    log:
+        "logs/integration/diagnostics.log",
+    params:
+        resolutions=" ".join(str(r) for r in PARAMS.get("leiden_resolutions", [1.5, 3.0])),
+    resources:
+        mem_mb=180000,
+        runtime=DEF_RT,
+        cpus_per_task=DEF_CPUS,
+    conda:
+        "environments/sc.yml"
+    shell:
+        """
+        python workflow/scripts/03_integration_diagnostics.py \
+            --input {input.h5ad:q} --output {output.h5ad:q} \
+            --leiden_resolutions {params.resolutions:q} > {log:q} 2>&1
         """
 
 

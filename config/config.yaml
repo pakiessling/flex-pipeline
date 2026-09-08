@@ -16,6 +16,7 @@ steps:
   soupx: true           # Ambient RNA removal via SoupX (requires raw + filtered matrices)
   qc: true              # Per-sample QC metrics and technical eligibility
   qc_diagnostics: false # Optional per-sample clustering, markers and UMAP
+  integration_diagnostics: false # Optional PaCMAP and standalone integration plots
   integration: true     # Multi-sample merge, Harmony batch correction, UMAP/PaCMAP
   label_transfer: true # SingleR label transfer from a reference dataset (set reference_h5ad below)
   markers: true         # Differential expression / marker genes via illico

@@ -2,7 +2,8 @@
 03_integration.py — Multi-sample integration via Harmony.
 
 Loads eligible QC files from an explicit manifest, computes HVGs, runs Harmony,
-generates UMAP and PaCMAP embeddings, and clusters at two Leiden resolutions.
+generates UMAP, and clusters at configured Leiden resolutions. PaCMAP and
+standalone plots are a separate optional job.
 Doublets are annotated in obs["scDblFinder.class"] but not removed here.
 """
 
@@ -15,7 +16,6 @@ import os
 import harmonypy as hm
 import numpy as np
 import pandas as pd
-import pacmap
 from processing_utils import select_hvgs, run_pca_neighbors
 import scanpy as sc
 
@@ -170,34 +170,6 @@ def main(args):
     logger.info("Computing UMAP …")
     sc.tl.umap(adata, init_pos="random" if adata.n_obs < 5 else "spectral")
 
-    logger.info("Computing PaCMAP …")
-    if adata.n_obs >= 20:
-        embedding = pacmap.PaCMAP(n_neighbors=min(10, adata.n_obs - 1))
-        adata.obsm["X_pacmap"] = embedding.fit_transform(adata.obsm["X_pca_harmony"])
-        adata.uns["pacmap_status"] = "completed"
-    else:
-        adata.uns["pacmap_status"] = "skipped: fewer than 20 cells"
-        logger.info(adata.uns["pacmap_status"])
-
-    logger.info("Saving UMAP plots …")
-    sc.settings.figdir = plot_dir
-
-    ri = np.random.permutation(adata.n_obs)
-    sc.pl.umap(adata[ri, :], color="Sample", save="_by_sample.png", show=False)
-
-    cluster_cols = [f"leiden_{str(r).replace('.', '_')}" for r in leiden_resolutions]
-    sc.pl.umap(
-        adata,
-        color=cluster_cols,
-        legend_loc="on data",
-        save="_clusters.png",
-        show=False,
-    )
-
-    qc_cols = [c for c in ["scDblFinder.class", "cell_quality"] if c in adata.obs.columns]
-    if qc_cols:
-        sc.pl.umap(adata[ri, :], color=qc_cols, save="_qc.png", show=False)
-
     # Reproducibility log
     import anndata as ad
 
@@ -214,7 +186,6 @@ def main(args):
         "software": {
             "scanpy": sc.__version__,
             "anndata": ad.__version__,
-            "pacmap": pacmap.__version__,
         },
     }
 
