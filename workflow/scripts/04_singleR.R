@@ -11,7 +11,14 @@ suppressPackageStartupMessages({
   library(argparser)
 })
 
+script_path <- sub("^--file=", "", grep("^--file=", commandArgs(), value = TRUE)[1])
+source(file.path(dirname(script_path), "singler_input.R"))
+
 parser <- arg_parser("SingleR label transfer")
+parser <- add_argument(parser, "--query_layer", default = "logcounts",
+                       help = "Query layer containing unscaled log-normalized expression")
+parser <- add_argument(parser, "--reference_layer", default = "X",
+                       help = "Reference layer (or X) containing unscaled log-normalized expression")
 parser <- add_argument(
   parser,
   "--query",
@@ -34,50 +41,49 @@ parser <- add_argument(
 args <- parse_args(parser)
 
 cat("Loading query:", args$query, "\n")
-query_ad <- read_h5ad(args$query, to = "SingleCellExperiment")
+query_ad <- read_h5ad(args$query)
 
 cat("Loading reference:", args$reference, "\n")
-ref_ad <- read_h5ad(args$reference, to = "SingleCellExperiment")
+ref_ad <- read_h5ad(args$reference)
 
-# SingleR requires an assay named "logcounts". anndataR names the main matrix
-# assay "X" when converting from h5ad, so rename it here for both objects.
-ensure_logcounts <- function(sce) {
-  nms <- SummarizedExperiment::assayNames(sce)
-  if (!"logcounts" %in% nms && length(nms) > 0) {
-    SummarizedExperiment::assayNames(sce)[1] <- "logcounts"
-    cat("  Renamed assay '", nms[1], "' → 'logcounts'\n", sep = "")
-  }
-  sce
+query_expr <- singler_expression(query_ad, args$query_layer, "Query")
+ref_expr <- singler_expression(ref_ad, args$reference_layer, "Reference")
+if (length(intersect(rownames(query_expr), rownames(ref_expr))) == 0) {
+  stop("Query and reference have no matching gene names")
 }
-query_ad <- ensure_logcounts(query_ad)
-ref_ad <- ensure_logcounts(ref_ad)
 
 # Validate that the label column exists in the reference
-if (!(args$label_column %in% colnames(colData(ref_ad)))) {
+if (!(args$label_column %in% colnames(ref_ad$obs))) {
   stop(paste0(
     "Label column '",
     args$label_column,
     "' not found in reference .obs. ",
     "Available columns: ",
-    paste(colnames(colData(ref_ad)), collapse = ", ")
+    paste(colnames(ref_ad$obs), collapse = ", ")
   ))
 }
 
-ref_labels <- colData(ref_ad)[[args$label_column]]
+ref_labels <- ref_ad$obs[[args$label_column]]
+if (anyNA(ref_labels) || any(trimws(as.character(ref_labels)) == "")) {
+  stop("Reference labels must not be missing or empty")
+}
 cat("Reference cell types:", paste(unique(ref_labels), collapse = ", "), "\n")
 
 cat("Running SingleR …\n")
 pred <- SingleR(
-  test = query_ad,
-  ref = ref_ad,
+  test = query_expr,
+  ref = ref_expr,
   labels = ref_labels,
   BPPARAM = MulticoreParam(workers = max(1L, parallel::detectCores() - 1L)),
-  aggr.ref = TRUE, # Aggregate reference by label to speed up
+  aggr.ref = TRUE # Aggregate reference by label to speed up
 )
 
 # --- Write labels back to the h5ad ----------------------------------------
-# Re-load as AnnData to modify .obs and write back
-query_py <- read_h5ad(args$query)
+# Preserve the complete AnnData, including inclusion manifest and count layers.
+query_py <- query_ad
+order <- match(rownames(query_py$obs), rownames(pred))
+if (anyNA(order)) stop("SingleR predictions do not cover every query cell")
+pred <- pred[order, ]
 
 query_py$obs[["singler_label"]] <- pred$labels
 query_py$obs[["singler_pruned_label"]] <- pred$pruned.labels
@@ -91,7 +97,9 @@ query_py$uns[["pipeline_log"]][["label_transfer"]] <- list(
   tool = "SingleR",
   reference_path = args$reference,
   label_column = args$label_column,
-  n_reference = nrow(ref_ad),
+  n_reference = ncol(ref_expr),
+  query_layer = args$query_layer,
+  reference_layer = args$reference_layer,
   completed_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S"),
   software = list(
     SingleR = as.character(packageVersion("SingleR")),

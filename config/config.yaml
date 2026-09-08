@@ -43,6 +43,7 @@ params:
   # Path to a reference h5ad file containing labelled cells.
   # Required when steps.label_transfer is true.
   reference_h5ad: "/hpcwork/p0020567/data/scRNA/processed/heart_project_2024/2025-08-06-final_data/hs_snrna.h5ad"
+  reference_expression_layer: "X" # Must contain unscaled log-normalized expression
   reference_label_column: "cell_subtype"  # Column in reference .obs to use as labels
 
   # --- Marker genes / illico (06_markers.py) ---

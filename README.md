@@ -262,3 +262,10 @@ is applied only to a temporary HVG matrix for PCA. Marker analysis explicitly
 uses `logcounts`, including for fold changes; it rejects older outputs missing
 that layer rather than interpreting scaled expression as logcounts. Rerun
 integration and downstream analysis to replace outputs made with scaled `X`.
+
+SingleR uses the query's `logcounts` layer explicitly. Set
+`params.reference_expression_layer` to the reference's unscaled log-normalized
+layer name, or `X` (the default) when that is where the reference stores it.
+The script validates values and gene/cell names and aligns predictions by cell
+name. It never renames an arbitrary first assay to `logcounts`. This also avoids
+the obsolete anndataR `to=` conversion argument.

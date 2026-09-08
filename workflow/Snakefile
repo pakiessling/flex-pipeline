@@ -387,6 +387,8 @@ if RUN_LABEL_TRANSFER:
 
     rule run_label_transfer:
         input:
+            script="workflow/scripts/04_singleR.R",
+            helper="workflow/scripts/singler_input.R",
             query=f"{OUT_INT}/integrated.h5ad",
             reference=_ref,
         output:
@@ -395,6 +397,7 @@ if RUN_LABEL_TRANSFER:
             f"logs/label_transfer/label_transfer.log",
         params:
             label_column=PARAMS.get("reference_label_column", "cell_type"),
+            reference_layer=PARAMS.get("reference_expression_layer", "X"),
             plot_dir=OUT_ANN,
         resources:
             mem_mb=180000,
@@ -407,7 +410,8 @@ if RUN_LABEL_TRANSFER:
             Rscript workflow/scripts/04_singleR.R \
                 --query {input.query} \
                 --reference {input.reference} \
-                --label_column {params.label_column} \
+                --label_column {params.label_column:q} \
+                --reference_layer {params.reference_layer:q} \
                 --output {output.h5ad} \
                 --plot_dir {params.plot_dir} \
                 > {log} 2>&1
