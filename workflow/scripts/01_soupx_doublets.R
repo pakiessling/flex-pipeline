@@ -7,10 +7,6 @@
 # Runs scDblFinder on the (corrected) counts and stores scDblFinder.score and
 # scDblFinder.class in obs. Writes output as .h5ad via anndataR.
 
-if (!requireNamespace("anndataR", quietly = TRUE)) {
-  pak::pak("scverse/anndataR@v0.1.0")
-}
-
 suppressPackageStartupMessages({
   library(SoupX)
   library(Matrix)
