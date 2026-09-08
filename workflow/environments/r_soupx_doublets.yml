@@ -1,16 +1,18 @@
-# r_soupx_doublets.yml — R environment for SoupX ambient RNA correction and
-#                        scDblFinder doublet detection (01_soupx_doublets.R).
+# R 4.5 / Bioconductor 3.22. Dependencies are installed before sample jobs.
 name: flex-r-soupx-doublets
 channels:
   - nodefaults
   - conda-forge
   - bioconda
 dependencies:
-  - r-base=4.3
-  - r-soupx>=1.6,<2              # minor-locked: ambient RNA correction algorithm
-  - bioconductor-scdblfinder>=1.16,<2  # minor-locked: doublet scoring algorithm
-  - r-matrix>=1.6,<2             # major-locked
-  - r-argparser>=0.7,<1          # major-locked
-  - bioconductor-rhdf5 >=2.56,<3             # major-locked
-  - bioconductor-anndataR>=1.2,<2
-
+  - r-base=4.5
+  - r-soupx=1.6.2
+  - bioconductor-scdblfinder=1.24
+  - bioconductor-singlecellexperiment=1.32
+  - bioconductor-biocparallel=1.44
+  - bioconductor-anndatar=1.0.2
+  - bioconductor-rhdf5=2.54
+  - r-matrix>=1.7,<2
+  - r-seurat>=5,<6
+  - r-hdf5r>=1.3,<2
+  - r-argparser>=0.7,<1

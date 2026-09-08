@@ -1,17 +1,15 @@
-# r_singler.yml — R environment for SingleR label transfer (04_singleR.R).
-# Used by: 04_singleR.R
+# R 4.5 / Bioconductor 3.22. No runtime package installation.
 name: flex-r-singler
 channels:
   - nodefaults
   - conda-forge
   - bioconda
 dependencies:
-  - r-base=4.3
-  - bioconductor-singler>=2.4,<3               # minor-locked: label transfer algorithm
-  - bioconductor-singlecellexperiment>=1.24,<2 # minor-locked
-  - bioconductor-biocparallel>=1.36,<2         # major-locked
-  - r-argparser>=0.7,<1                        # major-locked
-  - r-ggplot2>=3.4,<4                          # major-locked
-  - bioconductor-rhdf5 >=2.56,<3                         # major-locked
-  - bioconductor-anndataR>=1.2,<2
- 
+  - r-base=4.5
+  - bioconductor-singler=2.12
+  - bioconductor-singlecellexperiment=1.32
+  - bioconductor-biocparallel=1.44
+  - bioconductor-anndatar=1.0.2
+  - bioconductor-rhdf5=2.54
+  - r-argparser>=0.7,<1
+  - r-ggplot2>=3.4,<5

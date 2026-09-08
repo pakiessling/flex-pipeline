@@ -244,3 +244,12 @@ pytest):
 ```bash
 python -m pytest tests -q
 ```
+
+### R environment compatibility
+
+The R environments target R 4.5 / Bioconductor 3.22, including anndataR 1.0.2
+and rhdf5 2.54. Both dependency sets were solver-checked for Linux x86-64 with
+glibc 2.17. This verifies dependency resolution, not execution on the cluster.
+All installation happens through Conda before sample scripts run; no sample job
+installs R packages at runtime. Updating the environment YAML creates a new
+Snakemake environment, so allow time for that initial setup.
