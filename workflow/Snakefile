@@ -399,15 +399,18 @@ if RUN_LABEL_TRANSFER:
             label_column=PARAMS.get("reference_label_column", "cell_type"),
             reference_layer=PARAMS.get("reference_expression_layer", "X"),
             plot_dir=OUT_ANN,
+        threads: DEF_CPUS
         resources:
             mem_mb=180000,
             runtime=DEF_RT,
-            cpus_per_task=DEF_CPUS,
+            cpus_per_task=lambda wildcards, threads: threads,
         conda:
             "environments/r_singler.yml"
         shell:
             """
+            OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
             Rscript workflow/scripts/04_singleR.R \
+                --threads {threads} \
                 --query {input.query} \
                 --reference {input.reference} \
                 --label_column {params.label_column:q} \

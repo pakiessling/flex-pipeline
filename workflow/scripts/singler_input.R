@@ -20,3 +20,16 @@ singler_expression <- function(adata, layer, role) {
   dimnames(mat) <- list(genes, cells)
   mat
 }
+
+singler_workers <- function(requested, allocated = Sys.getenv("SLURM_CPUS_PER_TASK", "")) {
+  positive_integer <- function(x) {
+    n <- suppressWarnings(as.numeric(x))
+    if (length(n) != 1L || !is.finite(n) || n < 1 || n != floor(n)) {
+      stop("SingleR CPU limits must be positive integers")
+    }
+    as.integer(n)
+  }
+  workers <- positive_integer(requested)
+  if (nzchar(allocated)) workers <- min(workers, positive_integer(allocated))
+  workers
+}

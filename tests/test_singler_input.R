@@ -13,3 +13,9 @@ stopifnot(inherits(try(singler_expression(a, "missing", "Query"), silent = TRUE)
 a$X[1, 1] <- -1
 stopifnot(inherits(try(singler_expression(a, "X", "Reference"), silent = TRUE), "try-error"))
 cat("SingleR expression selection tests passed\n")
+stopifnot(singler_workers(8, "4") == 4L,
+          singler_workers(2, "8") == 2L,
+          singler_workers(1, "") == 1L,
+          inherits(try(singler_workers(0, ""), silent = TRUE), "try-error"),
+          inherits(try(singler_workers(2, "invalid"), silent = TRUE), "try-error"))
+cat("SingleR CPU limit tests passed\n")

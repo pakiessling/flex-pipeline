@@ -15,6 +15,8 @@ script_path <- sub("^--file=", "", grep("^--file=", commandArgs(), value = TRUE)
 source(file.path(dirname(script_path), "singler_input.R"))
 
 parser <- arg_parser("SingleR label transfer")
+parser <- add_argument(parser, "--threads", default = 1L,
+                       help = "Maximum workers, capped by SLURM_CPUS_PER_TASK when set")
 parser <- add_argument(parser, "--query_layer", default = "logcounts",
                        help = "Query layer containing unscaled log-normalized expression")
 parser <- add_argument(parser, "--reference_layer", default = "X",
@@ -69,12 +71,14 @@ if (anyNA(ref_labels) || any(trimws(as.character(ref_labels)) == "")) {
 }
 cat("Reference cell types:", paste(unique(ref_labels), collapse = ", "), "\n")
 
-cat("Running SingleR …\n")
+workers <- singler_workers(args$threads)
+cat("Running SingleR with", workers, "worker(s) …\n")
+bpparam <- if (workers == 1L) SerialParam() else MulticoreParam(workers = workers)
 pred <- SingleR(
   test = query_expr,
   ref = ref_expr,
   labels = ref_labels,
-  BPPARAM = MulticoreParam(workers = max(1L, parallel::detectCores() - 1L)),
+  BPPARAM = bpparam,
   aggr.ref = TRUE # Aggregate reference by label to speed up
 )
 
@@ -95,6 +99,7 @@ print(table(pred$labels))
 # Reproducibility info
 query_py$uns[["pipeline_log"]][["label_transfer"]] <- list(
   tool = "SingleR",
+  workers = workers,
   reference_path = args$reference,
   label_column = args$label_column,
   n_reference = ncol(ref_expr),
