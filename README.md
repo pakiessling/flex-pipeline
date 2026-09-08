@@ -238,11 +238,12 @@ status files and manifest; existing SoupX outputs can be reused. The standard
 `./launch.sh` command schedules missing status outputs automatically. No
 environment-installation behavior is changed by this update.
 
-Regression tests (in an environment with the Python pipeline dependencies and
-pytest):
+Regression tests (in an environment with the Python pipeline dependencies,
+pytest, and Snakemake):
 
 ```bash
 python -m pytest tests -q
+Rscript tests/test_singler_input.R  # Requires Matrix; tests selection and CPU limits
 ```
 
 ### R environment compatibility
@@ -280,3 +281,11 @@ a separate copy with PaCMAP coordinates when feasible. Marker analysis, SingleR,
 and reporting depend on the core object, so a diagnostic failure cannot delete
 it or block their dependencies. The report still generates its own UMAP figures.
 Unexpected diagnostic errors remain visible as job failures.
+
+Marker-only runs use the same primary Leiden resolution and output filename as
+the marker rule. `markers_is_log1p: false` is passed explicitly to the script;
+set `markers_expression_layer` to the corresponding expression layer (default:
+`logcounts`) and keep the transformation flag consistent with its contents.
+
+SingleR receives Snakemake's allocated threads, additionally capped by
+`SLURM_CPUS_PER_TASK`. Its BLAS/OpenMP threads are limited to one per worker.

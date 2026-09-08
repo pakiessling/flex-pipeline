@@ -49,6 +49,7 @@ params:
 
   # --- Marker genes / illico (06_markers.py) ---
   markers_n_top: 100             # Top N marker genes to report per cluster
+  markers_expression_layer: "logcounts" # Explicit layer used for DE
   markers_is_log1p: true         # Whether the expression matrix is already log1p-transformed
 
   # --- CyteType (05_cytetype.py) ---

@@ -89,6 +89,11 @@ OUT_REP    = OUT.get("report",       "results/report")
 # ---------------------------------------------------------------------------
 PARAMS = config.get("params", {})
 
+_PRIMARY_RES = float(PARAMS.get("leiden_primary_resolution", PARAMS.get("leiden_resolutions", [3.0])[-1]))
+_GROUP_KEY = f"leiden_{str(_PRIMARY_RES).replace('.', '_')}"
+_MARKERS_CSV = f"{OUT_MRK}/marker_genes_{_GROUP_KEY}.csv"
+
+
 # ---------------------------------------------------------------------------
 # Cluster resources (read from config, with sane defaults)
 # slurm_account and slurm_partition are NOT set here — they come from the
@@ -134,7 +139,7 @@ def _final_targets():
         targets.append(f"{OUT_ANN}/cytetype_annotation.json")
         return targets
     if RUN_MARKERS:
-        targets.append(f"{OUT_MRK}/marker_genes_{PARAMS.get('markers_group_key','leiden_3')}.csv")
+        targets.append(_MARKERS_CSV)
         return targets
     if RUN_LABEL_TRANSFER:
         targets.append(f"{OUT_ANN}/integrated_labeled.h5ad")
@@ -451,9 +456,6 @@ if RUN_LABEL_TRANSFER:
 # ===========================================================================
 # Step 6 — Marker genes (illico)
 # ===========================================================================
-_PRIMARY_RES = float(PARAMS.get("leiden_primary_resolution", PARAMS.get("leiden_resolutions", [3.0])[-1]))
-_GROUP_KEY = f"leiden_{str(_PRIMARY_RES).replace('.', '_')}"
-_MARKERS_CSV = f"{OUT_MRK}/marker_genes_{_GROUP_KEY}.csv"
 
 rule run_markers:
     input:
@@ -467,7 +469,8 @@ rule run_markers:
         markers_dir=OUT_MRK,
         group_key=_GROUP_KEY,
         n_top=PARAMS.get("markers_n_top", 100),
-        is_log1p="--is_log1p" if PARAMS.get("markers_is_log1p", True) else "",
+        expression_layer=PARAMS.get("markers_expression_layer", "logcounts"),
+        is_log1p="--is_log1p" if PARAMS.get("markers_is_log1p", True) else "--no-is_log1p",
     resources:
         mem_mb=180000,
         runtime=DEF_RT,
@@ -482,6 +485,7 @@ rule run_markers:
             --markers_dir {params.markers_dir} \
             --group_key {params.group_key} \
             --n_top {params.n_top} \
+            --expression_layer {params.expression_layer:q} \
             {params.is_log1p} \
             > {log} 2>&1
         """
