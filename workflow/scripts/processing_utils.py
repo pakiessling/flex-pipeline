@@ -113,9 +113,23 @@ def select_hvgs(adata, n_top_genes=4000, batch_key=None):
     logger.info("HVG selection: %s (%d genes)", method, mask.sum())
 
 
-def run_pca_neighbors(adata):
+def run_pca_neighbors(adata, scale=False):
     n_comps = min(50, adata.n_obs - 1, int(adata.var["highly_variable"].sum()) - 1)
     if n_comps < 2:
         raise InsufficientData("Fewer than 2 feasible principal components")
-    sc.pp.pca(adata, n_comps=n_comps, use_highly_variable=True)
+    if scale:
+        # Scale only a temporary HVG matrix, keeping expression suitable for DE.
+        from anndata import AnnData
+        mask = adata.var["highly_variable"].to_numpy()
+        work = AnnData(X=adata.X[:, mask].copy())
+        sc.pp.scale(work, zero_center=False)
+        sc.pp.pca(work, n_comps=n_comps)
+        adata.obsm["X_pca"] = work.obsm["X_pca"]
+        adata.uns["pca"] = work.uns["pca"]
+        adata.uns["pca"]["params"]["use_highly_variable"] = True
+        loadings = np.zeros((adata.n_vars, n_comps), dtype=work.varm["PCs"].dtype)
+        loadings[mask] = work.varm["PCs"]
+        adata.varm["PCs"] = loadings
+    else:
+        sc.pp.pca(adata, n_comps=n_comps, use_highly_variable=True)
     sc.pp.neighbors(adata, n_neighbors=min(15, adata.n_obs - 1), use_rep="X_pca")

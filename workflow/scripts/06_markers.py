@@ -101,6 +101,16 @@ def main(args):
     logger.info(f"Loading {args.input_file}")
     adata = sc.read_h5ad(args.input_file)
 
+    expression_layer = args.expression_layer
+    if expression_layer not in adata.layers:
+        raise ValueError(
+            f"Missing expression layer {expression_layer!r}. Rerun integration to "
+            "create logcounts; scaled X must not be used for marker fold changes."
+        )
+    # Use a separate analysis view so output expression/embeddings stay intact.
+    from anndata import AnnData
+    expression = AnnData(X=adata.layers[expression_layer], obs=adata.obs, var=adata.var)
+
     if args.group_key not in adata.obs.columns:
         raise KeyError(
             f"Group key '{args.group_key}' not found in adata.obs. "
@@ -121,7 +131,7 @@ def main(args):
         )
 
     de_df = asymptotic_wilcoxon(
-        adata,
+        expression,
         group_keys=args.group_key,
         reference=None,
         is_log1p=args.is_log1p,
@@ -168,6 +178,8 @@ def main(args):
         de_df, group_col, n_top=args.n_top, pval_cutoff=args.pval_cutoff
     )
 
+    adata.uns["rank_genes_groups"]["params"]["layer"] = expression_layer
+
     import anndata as ad
 
     adata.uns.setdefault("pipeline_log", {})["markers"] = {
@@ -176,6 +188,7 @@ def main(args):
         "group_key": args.group_key,
         "n_top": args.n_top,
         "is_log1p": args.is_log1p,
+        "expression_layer": expression_layer,
         "pval_cutoff": args.pval_cutoff,
         "n_groups": int(de_df[group_col].nunique()),
         "n_significant_upregulated": n_sig,
@@ -193,6 +206,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Marker gene analysis via illico.")
+    parser.add_argument("--expression_layer", default="logcounts", help="Explicit expression layer for marker analysis")
     parser.add_argument("--input_file", required=True, help="Input .h5ad path")
     parser.add_argument("--output_file", required=True, help="Output .h5ad path")
     parser.add_argument(

@@ -253,3 +253,12 @@ glibc 2.17. This verifies dependency resolution, not execution on the cluster.
 All installation happens through Conda before sample scripts run; no sample job
 installs R packages at runtime. Updating the environment YAML creates a new
 Snakemake environment, so allow time for that initial setup.
+
+### Expression used for downstream analysis
+
+Integration preserves selected input counts in `layers["counts"]` and stores
+log-normalized expression in both `X` and `layers["logcounts"]`. Gene scaling
+is applied only to a temporary HVG matrix for PCA. Marker analysis explicitly
+uses `logcounts`, including for fold changes; it rejects older outputs missing
+that layer rather than interpreting scaled expression as logcounts. Rerun
+integration and downstream analysis to replace outputs made with scaled `X`.

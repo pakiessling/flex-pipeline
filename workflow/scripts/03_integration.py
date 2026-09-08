@@ -115,8 +115,12 @@ def main(args):
     logger.info("Normalising, log-transforming, scaling …")
     sc.pp.normalize_total(adata)
     sc.pp.log1p(adata)
-    sc.pp.scale(adata, zero_center=False)
-    run_pca_neighbors(adata)
+    adata.layers["logcounts"] = adata.X.copy()
+    adata.uns["expression_representation"] = {
+        "X": "logcounts", "logcounts": "library-size normalized, natural log1p",
+        "counts": "selected input counts before normalization",
+    }
+    run_pca_neighbors(adata, scale=True)
 
     if n_samples > 1:
         logger.info(f"Running Harmony (max_iter={args.max_iter_harmony}) …")
