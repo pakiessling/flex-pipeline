@@ -14,7 +14,8 @@ samples: "samples.csv"
 # =============================================================================
 steps:
   soupx: true           # Ambient RNA removal via SoupX (requires raw + filtered matrices)
-  qc: true              # Per-sample QC metrics, doublet detection, clustering
+  qc: true              # Per-sample QC metrics and technical eligibility
+  qc_diagnostics: false # Optional per-sample clustering, markers and UMAP
   integration: true     # Multi-sample merge, Harmony batch correction, UMAP/PaCMAP
   label_transfer: true # SingleR label transfer from a reference dataset (set reference_h5ad below)
   markers: true         # Differential expression / marker genes via illico
@@ -29,7 +30,7 @@ params:
   expected_doublet_rate: 0.2    # Expected doublet rate passed as dbr to scDblFinder
 
   # --- QC (02_qc.py) ---
-  min_genes: 2                  # Minimum genes per cell (hard filter)
+  min_genes: 2                  # Quality annotation only; cells below this are retained
   mad_threshold: 5              # Median absolute deviation multiplier for outlier detection
 
   # --- Integration (03_integration.py) ---

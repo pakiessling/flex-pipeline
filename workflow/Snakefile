@@ -63,6 +63,7 @@ CELLRANGER_SAMPLES = samples_df.loc[~_h5ad_mask, "sample_id"].tolist()
 # ---------------------------------------------------------------------------
 STEPS = config.get("steps", {})
 RUN_SOUPX          = STEPS.get("soupx",          True)
+RUN_QC_DIAGNOSTICS = STEPS.get("qc_diagnostics", False)
 RUN_QC             = STEPS.get("qc",             True)
 RUN_INTEGRATION    = STEPS.get("integration",    True)
 RUN_LABEL_TRANSFER = STEPS.get("label_transfer", False)
@@ -121,6 +122,8 @@ def _report_input_h5ad():
 # ---------------------------------------------------------------------------
 def _final_targets():
     targets = []
+    if RUN_QC_DIAGNOSTICS:
+        targets += expand(f"{OUT_QC}/{{sample}}/{{sample}}_diagnostics.h5ad", sample=SAMPLES)
     if RUN_REPORT:
         targets.append(f"{OUT_REP}/report.html")
         return targets
@@ -251,9 +254,12 @@ if CELLRANGER_SAMPLES:
 # ===========================================================================
 rule run_qc:
     input:
+        script="workflow/scripts/02_qc.py",
+        helper="workflow/scripts/processing_utils.py",
         h5ad=f"{OUT_INTER}/{{sample}}_cleaned.h5ad",
     output:
         h5ad=f"{OUT_PS}/{{sample}}_clean.h5ad",
+        status=f"{OUT_PS}/{{sample}}_status.json",
     log:
         f"logs/qc/{{sample}}.log",
     params:
@@ -274,7 +280,8 @@ rule run_qc:
         python workflow/scripts/02_qc.py \
             --input {input.h5ad} \
             --sample {wildcards.sample} \
-            --output {output.h5ad} \
+            --output {output.h5ad:q} \
+            --status_output {output.status:q} \
             --qc_folder {params.qc_folder} \
             --min_genes {params.min_genes} \
             --mad_threshold {params.mad_threshold} \
@@ -283,18 +290,64 @@ rule run_qc:
         """
 
 
+# Optional diagnostics are independent of the QC artifacts used by integration.
+rule run_qc_diagnostics:
+    input:
+        h5ad=f"{OUT_PS}/{{sample}}_clean.h5ad",
+        script="workflow/scripts/02_qc.py",
+        helper="workflow/scripts/processing_utils.py",
+    output:
+        h5ad=f"{OUT_QC}/{{sample}}/{{sample}}_diagnostics.h5ad",
+    log:
+        f"logs/qc_diagnostics/{{sample}}.log",
+    params:
+        qc_folder=OUT_QC,
+        resolutions=" ".join(str(r) for r in PARAMS.get("leiden_resolutions", [1.5, 3.0])),
+    resources:
+        mem_mb=DEF_MEM,
+        runtime=DEF_RT,
+        cpus_per_task=DEF_CPUS,
+    conda:
+        "environments/sc.yml"
+    shell:
+        """
+        python workflow/scripts/02_qc.py --diagnostics \
+            --input {input.h5ad:q} --sample {wildcards.sample:q} \
+            --output {output.h5ad:q} --qc_folder {params.qc_folder:q} \
+            --leiden_resolutions {params.resolutions:q} > {log:q} 2>&1
+        """
+
+
+rule sample_manifest:
+    input:
+        h5ads=expand(f"{OUT_PS}/{{sample}}_clean.h5ad", sample=SAMPLES),
+        statuses=expand(f"{OUT_PS}/{{sample}}_status.json", sample=SAMPLES),
+        script="workflow/scripts/sample_manifest.py",
+    output:
+        csv=f"{OUT_INT}/sample_inclusion.csv",
+    conda:
+        "environments/sc.yml"
+    shell:
+        """
+        python workflow/scripts/sample_manifest.py \
+            --h5ads {input.h5ads:q} --statuses {input.statuses:q} --output {output.csv:q}
+        """
+
+
 # ===========================================================================
 # Step 3 — Integration (Harmony + UMAP + PaCMAP)
 # ===========================================================================
 rule run_integration:
     input:
+        manifest=f"{OUT_INT}/sample_inclusion.csv",
+        script="workflow/scripts/03_integration.py",
+        helper="workflow/scripts/processing_utils.py",
         h5ads=expand(f"{OUT_PS}/{{sample}}_clean.h5ad", sample=SAMPLES),
     output:
         h5ad=f"{OUT_INT}/integrated.h5ad",
     log:
         f"logs/integration/integration.log",
     params:
-        input_dir=OUT_PS,
         output_file=f"{OUT_INT}/integrated.h5ad",
         n_top_genes=PARAMS.get("n_top_genes", 4000),
         leiden_resolutions=" ".join(
@@ -311,7 +364,7 @@ rule run_integration:
     shell:
         """
         python workflow/scripts/03_integration.py \
-            --input_dir {params.input_dir} \
+            --manifest {input.manifest:q} \
             --output_file {params.output_file} \
             --n_top_genes {params.n_top_genes} \
             --leiden_resolutions "{params.leiden_resolutions}" \

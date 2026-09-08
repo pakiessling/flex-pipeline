@@ -198,6 +198,13 @@ def _section_qc(adata) -> str:
 
     table_html = pd.DataFrame(stats).to_html(classes="table", border=0, index=False)
 
+    inclusion = adata.uns.get("sample_inclusion")
+    inclusion_html = ""
+    if inclusion is not None:
+        inclusion_html = "<h3>Sample inclusion</h3>" + pd.DataFrame(inclusion).to_html(
+            classes="table", border=0, index=False, escape=True
+        )
+
     # QC violin
     fig = _plot_qc_violin(adata)
     violin_html = _img_tag(_fig_to_b64(fig), "QC metrics by sample") if fig else ""
@@ -205,6 +212,7 @@ def _section_qc(adata) -> str:
     return f"""
     <section id="qc">
       <h2>Per-sample QC</h2>
+      {inclusion_html}
       {table_html}
       {violin_html}
     </section>

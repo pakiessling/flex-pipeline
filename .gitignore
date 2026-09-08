@@ -3,3 +3,5 @@ logs/*
 results/*
 query.json
 .runtime_profile/
+__pycache__/
+.pytest_cache/

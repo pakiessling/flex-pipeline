@@ -3,11 +3,13 @@
 
 Cells are *marked* (not removed). Doublets are annotated by scDblFinder in the
 preceding SoupX step (.obs["scDblFinder.class"] / .obs["scDblFinder.score"]).
-Low-quality cells are flagged here in .obs["cell_quality"].
+Low-quality cells are flagged here in .obs["cell_quality"]. Only zero-total
+count cells are removed. Optional diagnostics run separately with --diagnostics.
 """
 
 import argparse
 import datetime
+import json
 import logging
 import os
 import warnings
@@ -19,6 +21,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scanpy as sc
+from processing_utils import (InsufficientData, prepare_counts, select_hvgs, run_pca_neighbors)
 from scipy.stats import median_abs_deviation as mad
 from statsmodels.stats.multitest import multipletests
 
@@ -77,25 +80,34 @@ def illico_to_rank_genes_groups(de_df: pd.DataFrame, group_col: str, n_top: int)
 
 def calculate_qc(adata):
     adata.var["MT"] = adata.var_names.str.startswith("MT-")
+    if not adata.n_obs or not adata.n_vars:
+        for col in ("total_counts", "n_genes_by_counts", "log1p_total_counts",
+                    "log1p_n_genes_by_counts", "pct_counts_MT", "pct_counts_in_top_20_genes"):
+            adata.obs[col] = np.zeros(adata.n_obs)
+        return adata
+    top = min(20, adata.n_vars)
     sc.pp.calculate_qc_metrics(
-        adata, qc_vars=["MT"], inplace=True, percent_top=[20], log1p=True
+        adata, qc_vars=["MT"], inplace=True, percent_top=[top], log1p=True
     )
+    if top != 20:
+        adata.obs["pct_counts_in_top_20_genes"] = adata.obs[f"pct_counts_in_top_{top}_genes"]
     return adata
 
 
-def flag_outliers(adata, nmads: int):
+def flag_outliers(adata, nmads: int, min_genes: int = 2):
     """Mark cells as low-quality based on MAD thresholds. Does NOT remove cells."""
 
     def is_outlier(metric, upper_only=False):
         M = adata.obs[metric]
+        if M.empty:
+            return pd.Series(False, index=M.index)
         if upper_only:
             return M > np.median(M) + nmads * mad(M)
         return (M < np.median(M) - nmads * mad(M)) | (M > np.median(M) + nmads * mad(M))
 
-    sc.pp.filter_cells(adata, min_genes=2)
-
     outlier_mask = (
-        is_outlier("log1p_total_counts")
+        (adata.obs["n_genes_by_counts"] < min_genes)
+        | is_outlier("log1p_total_counts")
         | is_outlier("log1p_n_genes_by_counts")
         | is_outlier("pct_counts_in_top_20_genes")
     )
@@ -106,17 +118,16 @@ def flag_outliers(adata, nmads: int):
     n_low = outlier_mask.sum()
     logger.info(
         f"  Low-quality cells flagged: {n_low} / {adata.n_obs} "
-        f"({100 * n_low / adata.n_obs:.1f}%)"
+        f"({100 * n_low / max(adata.n_obs, 1):.1f}%)"
     )
     return adata
 
 
 def cluster_and_embed(adata, leiden_resolutions):
-    sc.pp.highly_variable_genes(adata, flavor="seurat_v3", n_top_genes=4000)
+    select_hvgs(adata)
     sc.pp.normalize_total(adata)
     sc.pp.log1p(adata)
-    sc.pp.pca(adata, use_highly_variable=True)
-    sc.pp.neighbors(adata)
+    run_pca_neighbors(adata)
 
     for res in leiden_resolutions:
         key = f"leiden_{str(res).replace('.', '_')}"
@@ -135,15 +146,26 @@ def cluster_and_embed(adata, leiden_resolutions):
         key = f"leiden_{str(res).replace('.', '_')}"
         rg_key = f"rank_genes_groups_{str(res).replace('.', '_')}"
 
-        de_df = asymptotic_wilcoxon(adata, group_keys=key, reference=None, is_log1p=True)
+        if adata.obs[key].nunique() < 2:
+            logger.info("Skipping markers for %s: only one cluster", key)
+            continue
+        try:
+            de_df = asymptotic_wilcoxon(adata, group_keys=key, reference=None, is_log1p=True)
+        except np.linalg.LinAlgError as error:
+            logger.warning("Skipping markers for %s: %s", key, error)
+            adata.uns.setdefault("diagnostic_failures", {})[rg_key] = str(error)
+            continue
         de_df = de_df.reset_index()
         de_df = de_df.rename(columns={"pert": key, "feature": "gene"})
         adata.uns[rg_key] = illico_to_rank_genes_groups(de_df, key, n_top=100)
 
     sc.pp.scale(adata, zero_center=False)
-    sc.pp.pca(adata, use_highly_variable=True)
-    sc.pp.neighbors(adata)
-    sc.tl.umap(adata)
+    run_pca_neighbors(adata)
+    try:
+        sc.tl.umap(adata, init_pos="random" if adata.n_obs < 5 else "spectral")
+    except np.linalg.LinAlgError as error:
+        logger.warning("Skipping UMAP: %s", error)
+        adata.uns.setdefault("diagnostic_failures", {})["umap"] = str(error)
     return adata
 
 
@@ -163,18 +185,22 @@ def save_qc_plots(adata, sample: str, qc_folder: str, leiden_resolutions):
     # Filter to columns that exist
     color_cols = [c for c in color_cols if c in adata.obs.columns]
 
-    fig = sc.pl.umap(
-        adata,
-        color=color_cols,
-        legend_loc="on data",
-        return_fig=True,
-        vmax="p99",
-        sort_order=False,
-    )
-    umap_path = os.path.join(sample_dir, f"{sample}_umap.png")
-    fig.savefig(umap_path, bbox_inches="tight", dpi=150)
-    plt.close(fig)
-    logger.info(f"  UMAP saved → {umap_path}")
+    if "X_umap" in adata.obsm:
+        fig = sc.pl.umap(
+            adata,
+            color=color_cols,
+            legend_loc="on data",
+            return_fig=True,
+            vmax="p99",
+            sort_order=False,
+        )
+        umap_path = os.path.join(sample_dir, f"{sample}_umap.png")
+        fig.savefig(umap_path, bbox_inches="tight", dpi=150)
+        plt.close(fig)
+        logger.info(f"  UMAP saved → {umap_path}")
+
+    else:
+        logger.info("No UMAP available for %s", sample)
 
     # Top marker gene CSVs
     for res in leiden_resolutions:
@@ -196,7 +222,32 @@ def main(args):
 
     logger.info(f"[{args.sample}] Loading {args.input}")
     adata = sc.read_h5ad(args.input)
+    if args.diagnostics:
+        status = adata.uns["sample_status"]
+        diagnostic_status = {"status": "skipped", "reason": str(status["reason"])}
+        if status["integration_eligible"]:
+            try:
+                adata = cluster_and_embed(adata, leiden_resolutions)
+                save_qc_plots(adata, args.sample, args.qc_folder, leiden_resolutions)
+                failures = adata.uns.get("diagnostic_failures", {})
+                diagnostic_status = {
+                    "status": "partial" if failures else "completed",
+                    "reason": "; ".join(f"{k}: {v}" for k, v in failures.items()),
+                }
+            except (InsufficientData, np.linalg.LinAlgError) as error:
+                logger.warning("Skipping diagnostics: %s", error)
+                diagnostic_status = {"status": "skipped", "reason": str(error)}
+        adata.uns["diagnostics"] = diagnostic_status
+        os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
+        adata.write_h5ad(args.output)
+        return
     n_start = adata.n_obs
+    adata, status = prepare_counts(adata, args.sample)
+    logger.info("[%s] Eligibility: %s; removed %d zero-count cells; %s",
+                args.sample, status["integration_eligible"],
+                status["n_zero_count_cells_removed"], status["reason"])
+    # JSON keeps a complete audit of removed barcode IDs.
+    adata.uns["sample_status"] = {k: v for k, v in status.items() if k != "removed_cell_ids"}
     logger.info(f"[{args.sample}] Loaded {n_start} cells × {adata.n_vars} genes")
 
     # Append sample suffix to cell barcodes to ensure uniqueness after merging
@@ -209,13 +260,7 @@ def main(args):
     logger.info(
         f"[{args.sample}] Flagging outlier cells (MAD threshold={args.mad_threshold}) …"
     )
-    adata = flag_outliers(adata, nmads=args.mad_threshold)
-
-    logger.info(f"[{args.sample}] Clustering and embedding …")
-    adata = cluster_and_embed(adata, leiden_resolutions)
-
-    logger.info(f"[{args.sample}] Saving QC plots …")
-    save_qc_plots(adata, args.sample, args.qc_folder, leiden_resolutions)
+    adata = flag_outliers(adata, nmads=args.mad_threshold, min_genes=args.min_genes)
 
     # Reproducibility log
     import anndata as ad
@@ -232,14 +277,22 @@ def main(args):
         "n_low_quality": int((adata.obs["cell_quality"] == "low-quality").sum()),
         "n_scdblfinder_doublets": n_dbl,
         "mad_threshold": args.mad_threshold,
+        "min_genes_annotation_only": args.min_genes,
+        "cell_removal_policy": "zero_total_counts_only",
+        "integration_min_cells": 3,
+        "integration_min_variable_genes": 3,
         "software": {
             "scanpy": sc.__version__,
             "anndata": ad.__version__,
         },
     }
 
-    os.makedirs(os.path.dirname(args.output), exist_ok=True)
+    os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
     adata.write_h5ad(args.output)
+    status_path = args.status_output or args.output + ".status.json"
+    os.makedirs(os.path.dirname(status_path) or ".", exist_ok=True)
+    with open(status_path, "w") as fh:
+        json.dump(status, fh, indent=2)
     logger.info(f"[{args.sample}] Saved → {args.output}")
 
 
@@ -247,6 +300,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Per-sample QC for single-cell RNA-seq."
     )
+    parser.add_argument("--diagnostics", action="store_true", help="Run optional exploration on an existing QC result")
+    parser.add_argument("--status_output", help="Sample eligibility JSON")
     parser.add_argument("--input", required=True, help="Input .h5ad path")
     parser.add_argument("--sample", required=True, help="Sample identifier")
     parser.add_argument("--output", required=True, help="Output .h5ad path")
@@ -254,7 +309,7 @@ if __name__ == "__main__":
         "--qc_folder", required=True, help="Folder for QC plots and CSVs"
     )
     parser.add_argument(
-        "--min_genes", type=int, default=2, help="Minimum genes per cell"
+        "--min_genes", type=int, default=2, help="Minimum genes for quality annotation only; cells are retained"
     )
     parser.add_argument(
         "--mad_threshold",

@@ -77,7 +77,8 @@ All steps can be toggled on/off in `config/config.yaml` under `steps:`.
 | Step | Script | Description | Toggle |
 |---|---|---|---|
 | 1 | `01_soupx_doublets.R` | Ambient RNA correction (SoupX) + doublet scoring (scDblFinder) | `soupx` |
-| 2 | `02_qc.py` | Per-sample QC metrics, outlier flagging, clustering | `qc` |
+| 2 | `02_qc.py` | QC annotations and technical sample eligibility | `qc` |
+| 2 (optional) | `02_qc.py --diagnostics` | Per-sample clustering, markers, UMAP | `qc_diagnostics` |
 | 3 | `03_integration.py` | Harmony batch correction, UMAP, PaCMAP | `integration` |
 | 4 | `04_singleR.R` | Label transfer from reference dataset (SingleR) | `label_transfer` |
 | 5 | `05_cytetype.py` | LLM-based cluster annotation (CyteType) | `cytetype` |
@@ -92,7 +93,9 @@ samples.csv
   │                     (obs: scDblFinder.score, scDblFinder.class)
   └─ h5ad rows ──────→ copied directly  ──→ results/intermediate/{sample}_cleaned.h5ad
   → [02_qc]              results/per_sample/{sample}_clean.h5ad
-                          (obs: cell_quality, leiden_*)
+                          (obs: cell_quality; counts retained)
+                        + results/per_sample/{sample}_status.json
+  → [sample_manifest]   results/integration/sample_inclusion.csv
   → [03_integration]     results/integration/integrated.h5ad
   → [04_singler]         results/annotation/integrated_labeled.h5ad   (optional)
   → [06_markers]         results/annotation/integrated_markers.h5ad
@@ -185,3 +188,59 @@ params:
 ### CyteType annotation
 Set `steps.cytetype: true`. The markers step must also be enabled (`steps.markers: true`).
 (Also see [CyteType docs](https://github.com/NygenAnalytics/CyteType)).
+
+## Sample eligibility and cell retention
+
+QC retains low-quality cells and scDblFinder doublets for filtering by the user
+after the pipeline. `params.min_genes` now controls quality **annotation only**;
+it no longer removes cells. MAD outliers are also annotations.
+
+The only automatic cell removal in Python QC is a zero total count in the
+selected expression matrix (after SoupX when available). Each removed original
+barcode is recorded in `results/per_sample/{sample}_status.json`. Negative or
+nonfinite expression values fail visibly as invalid inputs instead of being
+silently removed. Preprocessed H5AD inputs should provide counts in
+`after_soupx`, `b4_soupx`, `counts`, or otherwise `X`, in that priority order.
+
+Samples are excluded from integration only when they cannot support the current
+dimensional reduction: fewer than three nonzero-count cells, fewer than three
+variable genes, or fewer than three variable genes after library-size
+normalization and log transformation. These are technical feasibility checks,
+not a biological sample-quality score. A biologically poor but technically
+processable sample stays included.
+
+Every assessed sample produces a QC H5AD and status JSON, including excluded
+samples. The H5AD retains the full gene set and count layers for all remaining
+cells. Integration reads an explicit manifest of the samples in the current
+workflow, never all H5ADs found in a directory.
+
+- `results/integration/sample_inclusion.csv` lists every requested sample,
+  inclusion/exclusion reasons, and cell counts.
+- The same table is embedded in `integrated.h5ad.uns["sample_inclusion"]` and
+  shown in the final report.
+- One eligible sample runs without Harmony; no eligible samples produces a clear
+  integration error, leaving the manifest and QC results available.
+- Known LOESS failures retry wider smoothing spans, then use Seurat HVGs on
+  log-normalized data. The selected method and failures are recorded in
+  `uns["hvg_selection"]`. Unknown errors still fail visibly.
+
+Per-sample clustering, marker tables, and UMAP are now optional diagnostics,
+separate from the QC files required by integration. Enable them with
+`steps.qc_diagnostics: true` (default: false). They write
+`results/qc/{sample}/{sample}_diagnostics.h5ad` and the existing plot/marker
+paths. Ineligible samples receive a skipped diagnostic status. A diagnostic
+failure cannot change sample eligibility; unexpected errors still fail that
+diagnostic job. With Snakemake's keep-going setting, independent integration
+jobs can continue.
+
+After updating an existing run, rerun QC and integration to create the new
+status files and manifest; existing SoupX outputs can be reused. The standard
+`./launch.sh` command schedules missing status outputs automatically. No
+environment-installation behavior is changed by this update.
+
+Regression tests (in an environment with the Python pipeline dependencies and
+pytest):
+
+```bash
+python -m pytest tests -q
+```
